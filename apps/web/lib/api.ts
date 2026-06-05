@@ -151,3 +151,50 @@ export interface Table {
   createdAt: string;
   settings?: { protected?: boolean };
 }
+
+// ── Dogi goal-mode (Phase D) ─────────────────────────────────────────────────
+
+/** One step in a Dogi plan — mirrors the dogi-agent.md §9 schema. */
+export interface DogiPlanStep {
+  id: string;
+  label: string;
+  instruction: string;
+  reads: string[];
+  output: {
+    mode: 'create';
+    key: string;
+    label?: string;
+  };
+  sources: DogiSource[];
+  policy: 'combine' | 'first';
+  dependsOn: string[];
+}
+
+/** A structured plan returned by `POST /tables/:id/ask-dogi`. */
+export interface DogiPlan {
+  goal: string;
+  steps: DogiPlanStep[];
+}
+
+/** Response from `POST /tables/:id/ask-dogi`. */
+export interface AskDogiResponse {
+  plan: DogiPlan | null;
+  /** Friendly explanation if plan is null (e.g. no LLM configured). */
+  reason?: string;
+}
+
+/** Response from `POST /tables/:id/apply-plan`. */
+export interface ApplyPlanResponse {
+  columnsCreated: number;
+  jobsEnqueued: number;
+}
+
+export const dogiApi = {
+  /** Ask Dogi to plan steps for a free-text goal. */
+  askDogi: (tableId: string, goal: string) =>
+    api.post<AskDogiResponse>(`/tables/${tableId}/ask-dogi`, { goal }),
+
+  /** Approve a plan — creates the columns and starts running them. */
+  applyPlan: (tableId: string, steps: DogiPlanStep[]) =>
+    api.post<ApplyPlanResponse>(`/tables/${tableId}/apply-plan`, { steps }),
+};

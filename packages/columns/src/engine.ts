@@ -80,6 +80,43 @@ export async function runCell(
   return true;
 }
 
+/**
+ * Goal-mode chaining (Phase D). After a dogi cell is filled for a lead, find the
+ * dogi columns in the SAME table whose `config.dependsOn` includes `filledKey`,
+ * whose EVERY dependency cell is now non-empty for this lead, and whose OWN
+ * output cell is still empty. Those are the steps that just became runnable for
+ * this lead — return their output keys so the caller can enqueue them.
+ *
+ * Idempotent by construction: a dependent whose cell is already filled (or whose
+ * other deps aren't ready) is never returned, so a re-run enqueues nothing.
+ */
+export async function findReadyDependents(leadId: string, filledKey: string): Promise<string[]> {
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+  if (!lead) return [];
+
+  const cols = await db.query.columns.findMany({
+    where: and(eq(columnsTable.tableId, lead.tableId), eq(columnsTable.type, 'dogi')),
+  });
+
+  const ready: string[] = [];
+  for (const col of cols) {
+    const config = (col.config as Record<string, unknown>) ?? {};
+    const dependsOn = Array.isArray(config.dependsOn)
+      ? (config.dependsOn as unknown[]).filter((d): d is string => typeof d === 'string')
+      : [];
+    if (!dependsOn.includes(filledKey)) continue; // not triggered by this fill
+
+    const outKey = outputKeyOf(col);
+    if (!isCellEmpty(lead, outKey)) continue; // already filled → idempotent skip
+
+    // Every dependency must be non-empty for this lead before the step can run.
+    if (!dependsOn.every((dep) => !isCellEmpty(lead, dep))) continue;
+
+    ready.push(outKey);
+  }
+  return ready;
+}
+
 /** Recompute a formula column inline for a set of leads (no jobs needed). */
 export async function runFormulaColumn(
   tableId: string,

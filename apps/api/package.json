@@ -11,10 +11,12 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@fetch/agent": "workspace:*",
     "@fetch/columns": "workspace:*",
     "@fetch/connectors": "workspace:*",
     "@fetch/core": "workspace:*",
     "@fetch/db": "workspace:*",
+    "@fetch/llm": "workspace:*",
     "@fetch/senders": "workspace:*",
     "@fetch/validation": "workspace:*",
     "@hono/node-server": "^1.13.7",

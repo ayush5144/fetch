@@ -5,4 +5,5 @@
  */
 export * from './loop';
 export * from './dogi';
+export * from './planner';
 export * from './tools';

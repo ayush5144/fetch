@@ -7,6 +7,7 @@ import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
 import { CellPeek } from './CellPeek';
 import { ImportModal } from './ImportModal';
+import { AskDogiModal } from './AskDogiModal';
 
 /**
  * Clay-style spreadsheet grid for a single table.
@@ -153,6 +154,10 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
 
   // ── Import modal
   const [showImport, setShowImport] = useState(false);
+
+  // ── Ask Dogi modal
+  const [showAskDogi, setShowAskDogi] = useState(false);
+  const [dogiSuccessMsg, setDogiSuccessMsg] = useState<string | null>(null);
 
   // ── Column resize
   const resizeState = useRef<{
@@ -571,6 +576,20 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           </div>
         ) : null}
         <div className="spacer" />
+        {dogiSuccessMsg && (
+          <span
+            className="pill pill-green"
+            style={{ fontSize: 12 }}
+          >
+            {dogiSuccessMsg}
+          </span>
+        )}
+        <button
+          className="btn btn-accent btn-sm"
+          onClick={() => { setDogiSuccessMsg(null); setShowAskDogi(true); }}
+        >
+          Ask Dogi 🐕
+        </button>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowImport(true)}>
           Import CSV
         </button>
@@ -885,6 +904,24 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           columns={columns}
           onClose={() => setShowImport(false)}
           onDone={() => { setShowImport(false); onRefreshLeads(); onRefreshColumns(); }}
+        />
+      )}
+
+      {/* Ask Dogi modal */}
+      {showAskDogi && (
+        <AskDogiModal
+          tableId={tableId}
+          onClose={() => setShowAskDogi(false)}
+          onDone={(columnsCreated) => {
+            setShowAskDogi(false);
+            onRefreshColumns();
+            onRefreshLeads();
+            setDogiSuccessMsg(
+              `${columnsCreated} column${columnsCreated !== 1 ? 's' : ''} created by Dogi`,
+            );
+            // Auto-dismiss after 5 s
+            setTimeout(() => setDogiSuccessMsg(null), 5000);
+          }}
         />
       )}
     </>

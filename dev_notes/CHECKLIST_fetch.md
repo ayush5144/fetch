@@ -322,17 +322,17 @@ only; build after sign-off. Every phase ends with
 
 ## Phase D - Goal Mode (Dogi Plans + Builds Columns)
 
-- [ ] "Ask Dogi" entry point on a table (a goal text box)
+- [x] "Ask Dogi" entry point on a table (a goal text box)
   - Test: submitting a goal returns a structured plan, not prose.
-- [ ] Planner (LLM) emits a `dogi-plan`: ordered steps with `reads/output/sources` + `dependsOn`
+- [x] Planner (LLM) emits a `dogi-plan`: ordered steps with `reads/output/sources` + `dependsOn`
   - Test: "find CEO email then write a custom email" yields 2 steps where step 2 depends on step 1's output column.
-- [ ] Plan review/approve UI: rename columns, switch output to map-existing, toggle search, change model, drop a step
+- [x] Plan review/approve UI: rename columns, switch output to map-existing, toggle search, change model, drop a step
   - Test: edits to the plan are reflected before anything is created.
-- [ ] On approve, create the columns from the plan (preview already shown), audited
+- [x] On approve, create the columns from the plan (preview already shown), audited
   - Test: approving creates exactly the planned columns in the table.
-- [ ] Run steps in dependency order (a step runs only once its input columns are filled), reusing fan-out + run-only-if-empty
+- [x] Run steps in dependency order (a step runs only once its input columns are filled), reusing fan-out + run-only-if-empty
   - Test: step 2 cells fill only after step 1 cells are populated; re-running skips filled cells.
-- [ ] Partial-failure handling: a failed step surfaces per-row without blocking independent rows
+- [x] Partial-failure handling: a failed step surfaces per-row without blocking independent rows
   - Test: one row failing step 1 doesn't stop other rows from completing step 2.
 
 ## Phase E - Saved Agents, Cost, Test-5

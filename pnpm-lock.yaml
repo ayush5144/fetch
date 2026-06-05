@@ -44,6 +44,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fetch/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@fetch/columns':
         specifier: workspace:*
         version: link:../../packages/columns
@@ -56,6 +59,9 @@ importers:
       '@fetch/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@fetch/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@fetch/senders':
         specifier: workspace:*
         version: link:../../packages/senders

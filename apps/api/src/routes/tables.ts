@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { columns as columnsTable, db, jobs, leads, sources, tables } from '@fetch/db';
 import { audit, enqueue, ingestLead, listTablesWithCounts } from '@fetch/core';
 import { getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
+import { planGoal, type DogiPlanStep } from '@fetch/agent';
+import { getLLM } from '@fetch/llm';
 import {
   CsvNormalizer,
   identityFieldFor,
@@ -275,6 +277,150 @@ tablesRoutes.post('/:id/run', async (c) => {
     // manual columns are skipped.
   }
   return c.json({ enqueued, formula }, 202);
+});
+
+// ── Goal mode (Phase D): Ask Dogi → plan → apply ──────────────────────────────
+
+const askDogiSchema = z.object({
+  goal: z.string().min(1),
+  /** Optional BYOK key for the planning call; never persisted or logged. */
+  apiKey: z.string().optional(),
+});
+
+/**
+ * Ask Dogi a GOAL; get back a structured PLAN (ordered cell-Dogis with deps),
+ * never prose. The plan is reviewed/edited by a human before anything is built.
+ * Returns `{ plan: null, reason }` when no LLM is configured (the planner needs
+ * a brain). 404 for an unknown table, 400 for a missing goal.
+ */
+tablesRoutes.post('/:id/ask-dogi', async (c) => {
+  const tableId = c.req.param('id');
+  const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  if (!table) return c.json({ error: 'not found' }, 404);
+
+  let body: z.infer<typeof askDogiSchema>;
+  try {
+    body = askDogiSchema.parse(await c.req.json());
+  } catch {
+    return c.json({ error: 'a non-empty `goal` is required' }, 400);
+  }
+
+  if (!getLLM(body.apiKey ? { apiKey: body.apiKey } : {})) {
+    return c.json({ plan: null, reason: 'no LLM configured' });
+  }
+
+  const existing = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const plan = await planGoal(body.goal, {
+    existingColumns: existing.map((col) => col.key),
+    apiKey: body.apiKey,
+  });
+  if (!plan) return c.json({ plan: null, reason: 'no LLM configured' });
+  return c.json({ plan });
+});
+
+const planSourceSchema = z.union([
+  z.object({ type: z.literal('provider'), name: z.string() }),
+  z.object({ type: z.literal('web'), via: z.enum(['native', 'external']) }),
+  z.object({ type: z.literal('scrape'), via: z.literal('firecrawl') }),
+  z.object({ type: z.literal('llm') }),
+]);
+
+const planStepSchema = z.object({
+  id: z.string().optional(),
+  label: z.string().min(1),
+  instruction: z.string().min(1),
+  reads: z.array(z.string()).default([]),
+  output: z
+    .object({
+      mode: z.literal('create').default('create'),
+      key: z.string().optional(),
+      label: z.string().optional(),
+    })
+    .default({ mode: 'create' }),
+  sources: z.array(planSourceSchema).default([{ type: 'llm' }]),
+  policy: z.enum(['combine', 'first']).default('combine'),
+  dependsOn: z.array(z.string()).default([]),
+});
+
+const applyPlanSchema = z.object({
+  steps: z.array(planStepSchema).min(1),
+  /** Optional BYOK key threaded to the kicked-off runs; never persisted. */
+  apiKey: z.string().optional(),
+});
+
+/**
+ * Apply an (approved, possibly edited) plan: create ONE `dogi` column per step,
+ * audited, then KICK OFF execution by enqueuing runs for the ROOT steps
+ * (`dependsOn` empty) across the table's leads (run-only-if-empty). Dependent
+ * steps chain on automatically in the worker as their inputs fill.
+ *
+ * Idempotent on column creation: a step whose key already exists is reused, not
+ * duplicated. Returns the created/reused columns.
+ */
+tablesRoutes.post('/:id/apply-plan', async (c) => {
+  const tableId = c.req.param('id');
+  const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  if (!table) return c.json({ error: 'not found' }, 404);
+
+  let body: z.infer<typeof applyPlanSchema>;
+  try {
+    body = applyPlanSchema.parse(await c.req.json());
+  } catch {
+    return c.json({ error: 'a non-empty `steps` array is required' }, 400);
+  }
+
+  const existing = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const byKey = new Map(existing.map((col) => [col.key, col]));
+
+  const created: typeof existing = [];
+  const rootKeys: string[] = [];
+
+  for (const step of body.steps as DogiPlanStep[]) {
+    const key = (step.output?.key && step.output.key.trim()) || snakeCase(step.label);
+    if (!key) continue;
+    if (step.dependsOn.length === 0) rootKeys.push(key);
+
+    // Idempotent: reuse an existing column with this key instead of re-creating.
+    const present = byKey.get(key);
+    if (present) {
+      created.push(present);
+      continue;
+    }
+
+    const config = {
+      kind: 'dogi',
+      instruction: step.instruction,
+      reads: step.reads,
+      output: { mode: 'create', key, label: step.output?.label ?? step.label },
+      sources: step.sources,
+      policy: step.policy,
+      dependsOn: step.dependsOn,
+    };
+    try {
+      const [col] = await db
+        .insert(columnsTable)
+        .values({ tableId, key, label: step.label, type: 'dogi', config })
+        .returning();
+      byKey.set(key, col!);
+      created.push(col!);
+      await audit({ entity: 'column', entityId: col!.id, action: 'create', diff: { key, plan: true } });
+    } catch {
+      // A name/key clash — skip; the column already exists under that label.
+    }
+  }
+
+  // Kick off the root steps across the whole table (run-only-if-empty).
+  const tableLeads = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+  let enqueued = 0;
+  for (const key of rootKeys) {
+    for (const lead of tableLeads) {
+      if (!isCellEmpty(lead, key)) continue;
+      await enqueue('enrich', { leadId: lead.id, columnKey: key, apiKey: body.apiKey }, { leadId: lead.id });
+      enqueued++;
+    }
+  }
+
+  return c.json({ columns: created, enqueued }, 201);
 });
 
 // ── Columns within a table ────────────────────────────────────────────────────
