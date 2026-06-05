@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db } from '../src/client';
-import { leads } from '../src/schema';
+import { DEFAULT_TABLE_ID, leads } from '../src/schema';
 import { truncateAll } from '../src/testing';
 
 /**
@@ -25,9 +25,9 @@ describe('leads.data GIN index', () => {
     // Seed a few rows so the table isn't trivially empty.
     for (let i = 0; i < 5; i++) {
       await db.execute(
-        sql`INSERT INTO leads (id, data) VALUES (${`seed${i}`}, ${JSON.stringify({
-          uses_shopify: i % 2 === 0,
-        })}::jsonb)`,
+        sql`INSERT INTO leads (id, table_id, data) VALUES (${`seed${i}`}, ${DEFAULT_TABLE_ID}, ${JSON.stringify(
+          { uses_shopify: i % 2 === 0 },
+        )}::jsonb)`,
       );
     }
 

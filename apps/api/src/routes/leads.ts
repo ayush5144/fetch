@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { CsvNormalizer, ManualNormalizer, readCsvHeaders } from '@fetch/connectors';
 import { enqueue, ingestLead } from '@fetch/core';
-import { db, leads, sources } from '@fetch/db';
+import { DEFAULT_TABLE_ID, db, leads, sources } from '@fetch/db';
 import { desc, eq } from 'drizzle-orm';
-import { getColumnByKey } from '@fetch/columns';
+import { getColumn } from '@fetch/columns';
 
 /**
  * /leads — the table's data API.
@@ -64,7 +64,12 @@ leadsRoutes.post('/', async (c) => {
     domain: body.domain ?? '',
   });
 
-  const { lead, created } = await ingestLead(canonical, { sourceId: source!.id, actor: 'user' });
+  // Legacy single-table endpoint — targets the default table.
+  const { lead, created } = await ingestLead(canonical, {
+    sourceId: source!.id,
+    tableId: DEFAULT_TABLE_ID,
+    actor: 'user',
+  });
   if (created && lead.email) await enqueue('validate', { leadId: lead.id });
 
   return c.json({ lead, created }, created ? 201 : 200);
@@ -105,6 +110,7 @@ leadsRoutes.post('/import', async (c) => {
     try {
       const { lead, created } = await ingestLead(canonical, {
         sourceId: source!.id,
+        tableId: DEFAULT_TABLE_ID,
         actor: 'user',
       });
       ids.push(lead.id);
@@ -141,13 +147,17 @@ leadsRoutes.patch('/:id/cell', async (c) => {
 leadsRoutes.post('/:id/run/:columnKey', async (c) => {
   const leadId = c.req.param('id');
   const columnKey = c.req.param('columnKey');
-  const column = await getColumnByKey(columnKey);
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+  if (!lead) return c.json({ error: 'lead not found' }, 404);
+
+  // The column is scoped to the lead's table.
+  const column = await getColumn(lead.tableId, columnKey);
   if (!column) return c.json({ error: 'unknown column' }, 404);
 
   if (column.type === 'manual') {
     return c.json({ error: 'manual columns are edited inline, not run' }, 400);
   }
-  // enrichment | agent | formula all resolve in the worker via the enrich queue.
+  // dogi | formula resolve in the worker via the enrich queue.
   const jobId = await enqueue('enrich', { leadId, columnKey }, { leadId });
   return c.json({ jobId }, 202);
 });

@@ -75,3 +75,13 @@ export interface Campaign {
   status: string;
   createdAt: string;
 }
+
+export interface Table {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  leadCount: number;
+  columnCount: number;
+  createdAt: string;
+}

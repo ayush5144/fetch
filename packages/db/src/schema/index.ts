@@ -6,6 +6,7 @@
  * (plus `columns`, which powers the dynamic column engine).
  */
 export * from './_shared';
+export * from './tables';
 export * from './sources';
 export * from './accounts';
 export * from './prompts';

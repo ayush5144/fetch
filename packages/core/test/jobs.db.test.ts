@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
-import { db, jobs, sources } from '@fetch/db';
+import { DEFAULT_TABLE_ID, db, jobs, sources } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
 import { CsvNormalizer } from '@fetch/connectors';
 import { enqueue, markJob } from '../src/jobs';
@@ -80,6 +80,6 @@ describe('job system', () => {
 async function makeLead(): Promise<string> {
   const [src] = await db.insert(sources).values({ type: 'csv', raw: {} }).returning();
   const canonical = new CsvNormalizer().normalize('email\nava@acme.com')[0]!;
-  const { lead } = await ingestLead(canonical, { sourceId: src!.id });
+  const { lead } = await ingestLead(canonical, { sourceId: src!.id, tableId: DEFAULT_TABLE_ID });
   return lead.id;
 }

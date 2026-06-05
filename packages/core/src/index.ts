@@ -8,6 +8,7 @@ export * from './logger';
 export * from './types';
 export * from './audit';
 export * from './dedupe';
+export * from './tables';
 export * from './eligibility';
 export * from './rateLimiter';
 export * from './jobs';

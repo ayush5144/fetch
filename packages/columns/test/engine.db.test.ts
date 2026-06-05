@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { columns, db, leads, sources } from '@fetch/db';
+import { DEFAULT_TABLE_ID, columns, db, leads, sources } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
 import { CsvNormalizer } from '@fetch/connectors';
 import { ingestLead } from '@fetch/core';
@@ -16,7 +16,7 @@ async function makeLead(email: string, data: Record<string, string> = {}): Promi
   const headers = ['email', ...Object.keys(data)];
   const values = [email, ...Object.values(data)];
   const csv = `${headers.join(',')}\n${values.join(',')}`;
-  const { lead } = await ingestLead(new CsvNormalizer().normalize(csv)[0]!, { sourceId: src!.id });
+  const { lead } = await ingestLead(new CsvNormalizer().normalize(csv)[0]!, { sourceId: src!.id, tableId: DEFAULT_TABLE_ID });
   return lead.id;
 }
 
@@ -62,16 +62,16 @@ describe('run-only-if-empty', () => {
   beforeEach(truncateAll);
 
   it('plans a run over only the empty cells, unless forced', async () => {
-    await db.insert(columns).values({ key: 'note', label: 'Note', type: 'manual', config: {} });
+    await db.insert(columns).values({ tableId: DEFAULT_TABLE_ID, key: 'note', label: 'Note', type: 'manual', config: {} });
     const a = await makeLead('a@x.com');
     const b = await makeLead('b@x.com');
     await writeCell(a, 'note', { value: 'already', confidence: 1, source: null });
 
-    const plan = await planRun('note', [a, b]);
+    const plan = await planRun(DEFAULT_TABLE_ID, 'note', [a, b]);
     expect(plan!.toRun.map((l) => l.id)).toEqual([b]); // only the empty one
     expect(plan!.skipped).toBe(1);
 
-    const forced = await planRun('note', [a, b], { force: true });
+    const forced = await planRun(DEFAULT_TABLE_ID, 'note', [a, b], { force: true });
     expect(forced!.toRun).toHaveLength(2); // force ignores the guard
   });
 });
@@ -81,6 +81,7 @@ describe('formula columns', () => {
 
   it('computes and recomputes a formula from other columns', async () => {
     await db.insert(columns).values({
+      tableId: DEFAULT_TABLE_ID,
       key: 'score',
       label: 'Score',
       type: 'formula',
@@ -89,13 +90,13 @@ describe('formula columns', () => {
     const id = await makeLead('a@x.com');
     await writeCell(id, 'company_size', { value: 50, confidence: 1, source: null });
 
-    expect(await runFormulaColumn('score', [id])).toBe(1);
+    expect(await runFormulaColumn(DEFAULT_TABLE_ID, 'score', [id])).toBe(1);
     let lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
     expect((lead!.data as any).score).toBe(100);
 
     // Change the input → recompute yields a new value.
     await writeCell(id, 'company_size', { value: 75, confidence: 1, source: null });
-    await runFormulaColumn('score', [id]);
+    await runFormulaColumn(DEFAULT_TABLE_ID, 'score', [id]);
     lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
     expect((lead!.data as any).score).toBe(150);
   });
@@ -107,7 +108,7 @@ describe('column deletion safety', () => {
   it('removing a column definition leaves existing data keys intact', async () => {
     const [col] = await db
       .insert(columns)
-      .values({ key: 'temp', label: 'Temp', type: 'manual', config: {} })
+      .values({ tableId: DEFAULT_TABLE_ID, key: 'temp', label: 'Temp', type: 'manual', config: {} })
       .returning();
     const id = await makeLead('a@x.com');
     await writeCell(id, 'temp', { value: 'keep me', confidence: 1, source: null });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db, events, leads, sources } from '@fetch/db';
+import { DEFAULT_TABLE_ID, db, events, leads, sources } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
 import { CsvNormalizer } from '@fetch/connectors';
 import { ingestLead } from '@fetch/core';
@@ -16,6 +16,7 @@ async function makeLead(email: string): Promise<string> {
   const [src] = await db.insert(sources).values({ type: 'csv', raw: {} }).returning();
   const { lead } = await ingestLead(new CsvNormalizer().normalize(`email\n${email}`)[0]!, {
     sourceId: src!.id,
+    tableId: DEFAULT_TABLE_ID,
   });
   return lead.id;
 }

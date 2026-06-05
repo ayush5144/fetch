@@ -4,6 +4,7 @@ import { accounts } from './accounts';
 import { campaigns } from './campaigns';
 import { createdAt, id, updatedAt } from './_shared';
 import { sources } from './sources';
+import { tables } from './tables';
 
 /**
  * leads — THE SPINE. One person who may be contacted, carrying the state of
@@ -19,6 +20,10 @@ export const leads = pgTable(
   'leads',
   {
     id: id(),
+    /** Which table this row lives in (Phase A multi-table). */
+    tableId: text('table_id')
+      .notNull()
+      .references(() => tables.id, { onDelete: 'cascade' }),
     accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
     sourceId: text('source_id').references(() => sources.id, { onDelete: 'set null' }),
 
@@ -70,6 +75,7 @@ export const leads = pgTable(
   (t) => [
     // Email is the lead-level dedupe key. Partial unique so many no-email leads
     // can coexist (NULLs are distinct, but we guard re-imports in code too).
+    index('leads_table_idx').on(t.tableId),
     index('leads_email_idx').on(t.email),
     index('leads_account_idx').on(t.accountId),
     index('leads_validation_idx').on(t.validationStatus),

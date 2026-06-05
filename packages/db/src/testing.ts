@@ -8,6 +8,8 @@ import { db } from './client';
  * `db` test project points at the disposable test database.
  */
 
+import { DEFAULT_TABLE_ID } from './schema';
+
 /** Every table, child-first, so a CASCADE TRUNCATE is unambiguous. */
 const ALL_TABLES = [
   'audit_log',
@@ -20,11 +22,16 @@ const ALL_TABLES = [
   'prompts',
   'accounts',
   'sources',
+  'tables',
 ] as const;
 
-/** Wipe all domain data, resetting identities. Call in beforeEach. */
+/**
+ * Wipe all domain data, resetting identities, then re-seed the default table so
+ * table-scoped tests always have somewhere to put rows. Call in beforeEach.
+ */
 export async function truncateAll(): Promise<void> {
+  await db.execute(sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`));
   await db.execute(
-    sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`),
+    sql`INSERT INTO tables (id, name, description) VALUES (${DEFAULT_TABLE_ID}, 'Leads', 'Default table') ON CONFLICT (id) DO NOTHING`,
   );
 }

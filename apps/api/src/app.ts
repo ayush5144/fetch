@@ -11,6 +11,7 @@ import { healthRoutes } from './routes/health';
 import { jobsRoutes } from './routes/jobs';
 import { leadsRoutes } from './routes/leads';
 import { promptsRoutes } from './routes/prompts';
+import { tablesRoutes } from './routes/tables';
 import { webhooksRoutes } from './routes/webhooks';
 
 /**
@@ -31,6 +32,7 @@ app.use('/webhooks/*', rateLimit({ windowMs: 60_000, max: 120 }));
 app.use('/leads/import', rateLimit({ windowMs: 60_000, max: 30 }));
 
 app.route('/', healthRoutes);
+app.route('/tables', tablesRoutes);
 app.route('/leads', leadsRoutes);
 app.route('/accounts', accountsRoutes);
 app.route('/columns', columnsRoutes);

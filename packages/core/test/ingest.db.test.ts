@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { accounts, auditLog, db, sources } from '@fetch/db';
+import { DEFAULT_TABLE_ID, accounts, auditLog, db, sources } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
 import { CsvNormalizer } from '@fetch/connectors';
 import { ingestLead, leadCountForAccount } from '../src/dedupe';
@@ -34,7 +34,7 @@ describe('ingestLead', () => {
 
   it('creates a new canonical lead and an account for its domain', async () => {
     const sourceId = await newSource();
-    const { lead, created } = await ingestLead(canonicalFrom(csvRow()), { sourceId });
+    const { lead, created } = await ingestLead(canonicalFrom(csvRow()), { sourceId, tableId: DEFAULT_TABLE_ID });
 
     expect(created).toBe(true);
     expect(lead.email).toBe('ava@acme.com');
@@ -46,8 +46,8 @@ describe('ingestLead', () => {
 
   it('dedupes on email: re-importing the same person merges, never duplicates', async () => {
     const sourceId = await newSource();
-    const first = await ingestLead(canonicalFrom(csvRow()), { sourceId });
-    const second = await ingestLead(canonicalFrom(csvRow({ title: 'SVP Sales' })), { sourceId });
+    const first = await ingestLead(canonicalFrom(csvRow()), { sourceId, tableId: DEFAULT_TABLE_ID });
+    const second = await ingestLead(canonicalFrom(csvRow({ title: 'SVP Sales' })), { sourceId, tableId: DEFAULT_TABLE_ID });
 
     expect(second.created).toBe(false);
     expect(second.lead.id).toBe(first.lead.id); // same row
@@ -58,18 +58,18 @@ describe('ingestLead', () => {
 
   it('merges only into empty fields and never clobbers existing data', async () => {
     const sourceId = await newSource();
-    await ingestLead(canonicalFrom(csvRow({ title: 'VP Sales' })), { sourceId });
+    await ingestLead(canonicalFrom(csvRow({ title: 'VP Sales' })), { sourceId, tableId: DEFAULT_TABLE_ID });
     // Second import has a different title; existing title must win.
-    const { lead } = await ingestLead(canonicalFrom(csvRow({ title: 'Intern' })), { sourceId });
+    const { lead } = await ingestLead(canonicalFrom(csvRow({ title: 'Intern' })), { sourceId, tableId: DEFAULT_TABLE_ID });
     expect(lead.title).toBe('VP Sales');
   });
 
   it('shares one account across two leads at the same company', async () => {
     const sourceId = await newSource();
-    const a = await ingestLead(canonicalFrom(csvRow({ email: 'ava@acme.com' })), { sourceId });
+    const a = await ingestLead(canonicalFrom(csvRow({ email: 'ava@acme.com' })), { sourceId, tableId: DEFAULT_TABLE_ID });
     const b = await ingestLead(
       canonicalFrom(csvRow({ first_name: 'Liam', email: 'liam@acme.com' })),
-      { sourceId },
+      { sourceId, tableId: DEFAULT_TABLE_ID },
     );
 
     expect(a.lead.accountId).toBe(b.lead.accountId);
@@ -83,7 +83,7 @@ describe('ingestLead', () => {
     const sourceId = await newSource();
     const { lead, created } = await ingestLead(
       canonicalFrom({ first_name: 'Anon', company: 'Globex' } as Record<string, string>),
-      { sourceId },
+      { sourceId, tableId: DEFAULT_TABLE_ID },
     );
     expect(created).toBe(true);
     expect(lead.email).toBeNull();
@@ -92,8 +92,8 @@ describe('ingestLead', () => {
 
   it('writes an audit_log entry on create and on merge', async () => {
     const sourceId = await newSource();
-    const { lead } = await ingestLead(canonicalFrom(csvRow()), { sourceId });
-    await ingestLead(canonicalFrom(csvRow({ phone: '555-1234' })), { sourceId });
+    const { lead } = await ingestLead(canonicalFrom(csvRow()), { sourceId, tableId: DEFAULT_TABLE_ID });
+    await ingestLead(canonicalFrom(csvRow({ phone: '555-1234' })), { sourceId, tableId: DEFAULT_TABLE_ID });
 
     const entries = await db.query.auditLog.findMany({ where: eq(auditLog.entityId, lead.id) });
     const actions = entries.map((e) => e.action);

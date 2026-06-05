@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { columns, db, prompts } from '@fetch/db';
 import { CsvNormalizer } from '@fetch/connectors';
-import { ingestLead } from '@fetch/core';
+import { ensureDefaultTable, ingestLead } from '@fetch/core';
 import { sources } from '@fetch/db';
 
 /**
@@ -10,23 +10,36 @@ import { sources } from '@fetch/db';
  * (which also create their accounts via dedupe). Safe to run once on a clean DB.
  */
 async function main() {
+  const tableId = await ensureDefaultTable();
+
   console.log('[seed] inserting columns…');
   await db
     .insert(columns)
     .values([
       {
+        tableId,
         key: 'company_size',
         label: 'Company size',
-        type: 'enrichment',
-        config: { field: 'company_size', providers: ['apollo', 'hunter'] },
+        type: 'dogi',
+        config: {
+          instruction: 'Find the company headcount.',
+          reads: ['company'],
+          output: { mode: 'fill', key: 'company_size' },
+          sources: [{ type: 'provider', name: 'apollo' }, { type: 'web', via: 'native' }],
+          policy: 'combine',
+        },
       },
       {
+        tableId,
         key: 'recent_signal',
         label: 'Recent signal',
-        type: 'agent',
+        type: 'dogi',
         config: {
-          prompt: 'Find this company’s most recent funding, launch, or hiring signal.',
-          outputField: 'recent_signal',
+          instruction: 'Find this company’s most recent funding, launch, or hiring signal.',
+          reads: ['company'],
+          output: { mode: 'fill', key: 'recent_signal' },
+          sources: [{ type: 'web', via: 'native' }, { type: 'llm' }],
+          policy: 'combine',
         },
       },
     ])
@@ -55,7 +68,7 @@ async function main() {
   const [source] = await db.insert(sources).values({ type: 'csv', raw: { seed: true } }).returning();
   const leads = new CsvNormalizer().normalize(csv);
   for (const lead of leads) {
-    await ingestLead(lead, { sourceId: source!.id, actor: 'seed' });
+    await ingestLead(lead, { sourceId: source!.id, tableId, actor: 'seed' });
   }
 
   console.log('[seed] done. Open the web app and run a column.');

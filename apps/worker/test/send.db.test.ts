@@ -8,7 +8,7 @@ vi.mock('@fetch/senders', () => ({
   getAdapter: () => ({ provider: 'instantly', available: true, push: pushSpy, parseEvent: () => null }),
 }));
 
-import { campaigns, db, events, leads, sources } from '@fetch/db';
+import { DEFAULT_TABLE_ID, campaigns, db, events, leads, sources } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
 import { CsvNormalizer } from '@fetch/connectors';
 import { ingestLead } from '@fetch/core';
@@ -30,6 +30,7 @@ async function setup() {
   const mk = async (email: string) => {
     const { lead } = await ingestLead(new CsvNormalizer().normalize(`email\n${email}`)[0]!, {
       sourceId: src!.id,
+      tableId: DEFAULT_TABLE_ID,
     });
     await db
       .update(leads)

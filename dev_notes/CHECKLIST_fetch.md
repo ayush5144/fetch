@@ -249,19 +249,19 @@ only; build after sign-off. Every phase ends with
 
 ## Phase A - Multi-Table Foundation
 
-- [ ] Add `tables` table (id, name, description?, icon?, timestamps)
+- [x] Add `tables` table (id, name, description?, icon?, timestamps)
   - Test: a migration creates `tables`; `npm run migrate` is idempotent.
-- [ ] Add `table_id` FK to `leads` and `columns`; backfill existing rows into one default "Leads" table; set NOT NULL
+- [x] Add `table_id` FK to `leads` and `columns`; backfill existing rows into one default "Leads" table; set NOT NULL
   - Test: every existing lead/column has a `table_id`; the default table holds them all.
-- [ ] Make `columns.key` unique per `(table_id, key)` instead of global
+- [x] Make `columns.key` unique per `(table_id, key)` instead of global
   - Test: two tables can each have a column keyed `company`; a dup within one table is rejected.
-- [ ] Tables CRUD API: `GET/POST/PATCH/DELETE /tables`
+- [x] Tables CRUD API: `GET/POST/PATCH/DELETE /tables`
   - Test: create→list→rename→delete round-trips; deleting a table cascades its leads/columns.
-- [ ] Scope leads/columns endpoints by table (`GET /tables/:id/leads`, `/columns`)
+- [x] Scope leads/columns endpoints by table (`GET /tables/:id/leads`, `/columns`)
   - Test: leads/columns return only the requested table's rows.
-- [ ] Overview lists tables (with counts) and creates a table + a lead
+- [x] Overview lists tables (with counts) and creates a table + a lead
   - Test: creating a table in the UI shows it in Overview; "New lead" lands in the chosen table.
-- [ ] Job/event/audit references still resolve (they key on `lead_id`)
+- [x] Job/event/audit references still resolve (they key on `lead_id`)
   - Test: a run on a lead in a non-default table still produces jobs/provenance.
 
 ## Phase B - The Clay Grid (Leads View)

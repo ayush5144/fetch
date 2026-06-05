@@ -8,6 +8,13 @@
       "when": 1780594051030,
       "tag": "0000_late_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780647886686,
+      "tag": "0001_minor_arachne",
+      "breakpoints": true
     }
   ]
 }

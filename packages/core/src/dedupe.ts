@@ -1,6 +1,6 @@
 import { accounts, db, leads } from '@fetch/db';
 import type { Account, Lead } from '@fetch/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { audit, diffOf } from './audit';
 import type { CanonicalLead } from './types';
 
@@ -50,13 +50,17 @@ function fillIfEmpty<T>(current: T | null | undefined, incoming: T | null | unde
  */
 export async function ingestLead(
   canonical: CanonicalLead,
-  ctx: { sourceId: string; actor?: string },
+  ctx: { sourceId: string; tableId: string; actor?: string },
 ): Promise<{ lead: Lead; created: boolean }> {
   const account = await findOrCreateAccount(canonical);
   const email = canonical.email?.trim().toLowerCase() || null;
 
+  // Dedupe is scoped to the table — a lead with the same email in another table
+  // is a separate row. (Phase G makes the dedupe key configurable per table.)
   const existing = email
-    ? await db.query.leads.findFirst({ where: eq(leads.email, email) })
+    ? await db.query.leads.findFirst({
+        where: and(eq(leads.email, email), eq(leads.tableId, ctx.tableId)),
+      })
     : undefined;
 
   if (existing) {
@@ -88,6 +92,7 @@ export async function ingestLead(
   const [created] = await db
     .insert(leads)
     .values({
+      tableId: ctx.tableId,
       sourceId: ctx.sourceId,
       accountId: account?.id ?? null,
       firstName: canonical.firstName ?? null,
