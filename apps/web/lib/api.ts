@@ -233,6 +233,100 @@ export const dogiApi = {
     api.post<ApplyPlanResponse>(`/tables/${tableId}/apply-plan`, { steps }),
 };
 
+// ── Doggo goal-mode (row-sourcing + columns) ──────────────────────────────────
+// Doggo is a superset of the Dogi planner: a plan step is EITHER a row-sourcing
+// step (CREATE rows) or a column step (today's DogiPlanStep). See devx/doggo.md.
+
+/** A step that CREATES rows — generate `count` entities and insert them as leads. */
+export interface SourceRowsStep {
+  kind: 'source-rows';
+  /** Plain-language description of the entities to create ("top 10 EV companies"). */
+  description: string;
+  /** Target number of entities (clamped to [1, 50] at run time). */
+  count: number;
+  /** The object key each generated entity carries (snake_case, e.g. "company"). */
+  primaryField: string;
+  /** Human label for that field's column. */
+  primaryLabel: string;
+}
+
+/** A column step is today's DogiPlanStep, optionally tagged with `kind: 'column'`. */
+export type ColumnPlanStep = DogiPlanStep & { kind?: 'column' };
+
+/** One Doggo plan step: create rows, or build/enrich a column. */
+export type DoggoPlanStep = SourceRowsStep | ColumnPlanStep;
+
+/** A structured plan returned by `POST /tables/:id/doggo/plan`. */
+export interface DoggoPlan {
+  goal: string;
+  steps: DoggoPlanStep[];
+}
+
+/** A step with no `kind` is a legacy column step (back-compat). */
+export function isSourceRowsStep(step: DoggoPlanStep): step is SourceRowsStep {
+  return (step as { kind?: string }).kind === 'source-rows';
+}
+
+/** Response from `POST /tables/:id/doggo/plan`. */
+export interface DoggoPlanResponse {
+  plan: DoggoPlan | null;
+  /** Friendly explanation if plan is null (e.g. no LLM configured). */
+  reason?: string;
+}
+
+/** Response from `POST /tables/:id/doggo/run`. */
+export interface DoggoRunResponse {
+  rowsCreated: number;
+  columnsCreated: number;
+  enqueued: number;
+}
+
+export const doggoApi = {
+  /** Ask Doggo to plan steps (row-sourcing + columns) for a free-text goal. */
+  plan: (tableId: string, goal: string, apiKey?: string) =>
+    api.post<DoggoPlanResponse>(`/tables/${tableId}/doggo/plan`, { goal, apiKey }),
+
+  /** Run an approved Doggo plan — sources rows, builds columns, enqueues runs. */
+  run: (tableId: string, plan: DoggoPlan, apiKey?: string) =>
+    api.post<DoggoRunResponse>(`/tables/${tableId}/doggo/run`, { plan, apiKey }),
+};
+
+// ── Per-table Doggo settings (persisted in table.settings.doggo) ──────────────
+
+/** Doggo's configurable settings, persisted in `table.settings.doggo`. */
+export interface DoggoSettings {
+  /** The brain (provider/model/keySource) Doggo's planner + created columns use. */
+  brain?: DogiBrain;
+  /** Default sources Doggo hands the columns it builds. */
+  defaultSources?: DogiSource[];
+}
+
+/** Read one table's full row (incl. `settings`) from the list endpoint —
+ *  there is no single-table GET route, so we filter the list by id. */
+async function fetchTableRow(
+  tableId: string,
+): Promise<{ settings?: Record<string, unknown> } | undefined> {
+  const { tables } = await api.get<{
+    tables: { id: string; settings?: Record<string, unknown> }[];
+  }>('/tables');
+  return tables.find((t) => t.id === tableId);
+}
+
+export const doggoSettingsApi = {
+  /** Read a table's persisted Doggo settings (empty object if unset). */
+  async get(tableId: string): Promise<DoggoSettings> {
+    const row = await fetchTableRow(tableId);
+    return ((row?.settings?.doggo as DoggoSettings | undefined) ?? {});
+  },
+
+  /** Persist a table's Doggo settings, merging into existing `settings`. */
+  async save(tableId: string, doggo: DoggoSettings): Promise<void> {
+    const row = await fetchTableRow(tableId);
+    const settings = { ...(row?.settings ?? {}), doggo };
+    await api.patch(`/tables/${tableId}`, { settings });
+  },
+};
+
 // ── Phase E: Saved agents ─────────────────────────────────────────────────────
 
 /** A saved Dogi or goal-plan stored in the agents table. */

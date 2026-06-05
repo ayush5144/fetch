@@ -7,7 +7,7 @@ import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
 import { CellPeek } from './CellPeek';
 import { ImportModal } from './ImportModal';
-import { AskDogiModal } from './AskDogiModal';
+import { AskDoggoModal } from './AskDoggoModal';
 import { Modal } from '@/components/Modal';
 
 /**
@@ -696,7 +696,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           className="btn btn-accent btn-sm"
           onClick={() => { setDogiSuccessMsg(null); setShowAskDogi(true); }}
         >
-          Ask Dogi 🐕
+          Ask Doggo 🐕
         </button>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowImport(true)}>
           Import CSV
@@ -1057,17 +1057,21 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
         </Modal>
       )}
 
-      {/* Ask Dogi modal */}
+      {/* Ask Doggo modal */}
       {showAskDogi && (
-        <AskDogiModal
+        <AskDoggoModal
           tableId={tableId}
           onClose={() => setShowAskDogi(false)}
-          onDone={(columnsCreated) => {
+          onDone={({ rowsCreated, columnsCreated, enqueued }) => {
             setShowAskDogi(false);
             onRefreshColumns();
             onRefreshLeads();
+            const parts: string[] = [];
+            if (rowsCreated > 0) parts.push(`${rowsCreated} row${rowsCreated !== 1 ? 's' : ''}`);
+            if (columnsCreated > 0) parts.push(`${columnsCreated} column${columnsCreated !== 1 ? 's' : ''}`);
+            if (enqueued > 0) parts.push(`${enqueued} run${enqueued !== 1 ? 's' : ''} queued`);
             setDogiSuccessMsg(
-              `${columnsCreated} column${columnsCreated !== 1 ? 's' : ''} created by Dogi`,
+              parts.length > 0 ? `Doggo created ${parts.join(', ')}` : 'Doggo finished',
             );
             // Auto-dismiss after 5 s
             setTimeout(() => setDogiSuccessMsg(null), 5000);

@@ -117,6 +117,36 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            <div className="card">
+              <div className="card-head">
+                <h3>Dogi &amp; Doggo</h3>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  The two agents — one fills a cell, one runs a whole table.
+                </span>
+              </div>
+              <div className="card-pad" style={{ paddingTop: 0 }}>
+                <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+                  <span className="settings-row-label">
+                    <strong>Dogi</strong> — cell agent
+                    <p className="settings-note" style={{ margin: '4px 0 0' }}>
+                      Fills one field for one row, with provenance. Configured per column in that
+                      column&apos;s config (sources, policy, brain). Created and tuned where you add the column.
+                    </p>
+                  </span>
+                </div>
+                <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+                  <span className="settings-row-label">
+                    <strong>Doggo</strong> — table orchestrator
+                    <p className="settings-note" style={{ margin: '4px 0 0' }}>
+                      The <strong>“Ask Doggo”</strong> button on a table. Takes a goal, sources rows, and
+                      builds the columns to enrich them — using Dogi as its hands. Its brain and default
+                      sources are configurable in the Ask Doggo dialog and saved on that table.
+                    </p>
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {SECTIONS.map((section) => (
               <div className="card" key={section.title}>
                 <div className="card-head">

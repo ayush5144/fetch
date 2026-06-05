@@ -603,6 +603,80 @@ table.tbl {
   border-top: 1px solid var(--border);
 }
 
+/* ── Ask Doggo modal ────────────────────────────────────────────────────────*/
+.doggo-step {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.doggo-step-source {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.doggo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.doggo-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.doggo-settings {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.doggo-settings-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.doggo-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.doggo-banner {
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.doggo-banner-amber {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+.doggo-banner-red {
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+
 /* progress bar (analytics funnel) */
 .bar {
   height: 8px;
