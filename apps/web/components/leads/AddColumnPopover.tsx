@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { DogiConfigForm, type DogiConfig } from './DogiConfigForm';
-import type { ValueType, FillMethod, Column } from '@/lib/api';
+import { agentsApi, type ValueType, type FillMethod, type Column, type SavedAgent } from '@/lib/api';
 
 /**
  * Inline popover for creating or editing a column. Anchored next to the
@@ -121,9 +121,20 @@ export function AddColumnPopover({
   const popRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
 
+  // Phase E — saved agents
+  const [savedAgents, setSavedAgents] = useState<SavedAgent[]>([]);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+
   useEffect(() => {
     labelRef.current?.focus();
   }, []);
+
+  // Load saved agents once when the popover opens (for Dogi columns)
+  useEffect(() => {
+    if (agentsLoaded) return;
+    setAgentsLoaded(true);
+    agentsApi.list().then((res) => setSavedAgents(res.agents ?? [])).catch(() => {/* silently ignore */});
+  }, [agentsLoaded]);
 
   // Position the popover near the anchor
   const style: React.CSSProperties = {
@@ -316,12 +327,64 @@ export function AddColumnPopover({
           {/* Dogi config */}
           {selectedType.id === 'dogi' && (
             <div style={{ marginBottom: 4 }}>
+              {/* Phase E — Use a saved agent */}
+              {savedAgents.length > 0 && (
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
+                    Use a saved agent
+                  </label>
+                  <select
+                    className="select"
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const agent = savedAgents.find((a) => a.id === e.target.value);
+                      if (!agent) return;
+                      // Pre-fill config from saved agent (still editable)
+                      const cfg = agent.config as Partial<DogiConfig>;
+                      setDogiConfig({
+                        instruction: cfg.instruction ?? '',
+                        reads: cfg.reads ?? [],
+                        output: cfg.output ?? { mode: 'fill' },
+                        sources: cfg.sources ?? [],
+                        policy: cfg.policy ?? 'combine',
+                        brain: cfg.brain,
+                      });
+                      // Pre-fill label if empty
+                      if (!label) setLabel(agent.name);
+                    }}
+                    style={{ fontSize: 12 }}
+                  >
+                    <option value="">Pick a saved agent…</option>
+                    {savedAgents.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    Pre-fills the config below — you can still edit everything.
+                  </span>
+                </div>
+              )}
+
               <DogiConfigForm
                 value={dogiConfig}
                 onChange={setDogiConfig}
                 availableColumns={availableColumns}
                 apiKey={apiKey}
                 onApiKeyChange={setApiKey}
+                onSaveAsAgent={async (agentName) => {
+                  const config: Record<string, unknown> = {
+                    instruction: dogiConfig.instruction,
+                    reads: dogiConfig.reads,
+                    output: dogiConfig.output,
+                    sources: dogiConfig.sources,
+                    policy: dogiConfig.policy,
+                  };
+                  if (dogiConfig.brain) config.brain = dogiConfig.brain;
+                  const res = await agentsApi.save(agentName, 'dogi', config);
+                  // Refresh local list so the new agent immediately appears
+                  setSavedAgents((prev) => [...prev, res.agent]);
+                }}
               />
             </div>
           )}

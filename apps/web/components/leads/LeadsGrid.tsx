@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type Column, type Lead, type CellJob } from '@/lib/api';
+import { api, estimateCost, type Column, type Lead, type CellJob } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
 import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
@@ -296,6 +296,50 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
       setTimeout(onRefreshLeads, 500);
     } catch (e) {
       console.error('run column failed', e);
+    }
+  }
+
+  /** Phase E — Test 5: run the column on only the first 5 empty rows. */
+  async function test5Column(col: Column) {
+    try {
+      const isByok = col.config?.brain?.keySource === 'byok';
+      const apiKey = isByok ? byokKeys[col.id] : undefined;
+      if (isByok && !apiKey) {
+        const entered = window.prompt(`Enter your ${col.config?.brain?.provider ?? 'AI'} API key for "${col.label}" (session only, never saved):`);
+        if (!entered) return;
+        setByokKeys((prev) => ({ ...prev, [col.id]: entered }));
+        await api.post(`/tables/${tableId}/columns/${col.key}/run`, { limit: 5, apiKey: entered });
+      } else {
+        await api.post(`/tables/${tableId}/columns/${col.key}/run`, { limit: 5, ...(apiKey ? { apiKey } : {}) });
+      }
+      setTimeout(onRefreshLeads, 500);
+    } catch (e) {
+      console.error('test 5 failed', e);
+    }
+  }
+
+  /** Phase E — estimate cost before a full run. Returns a formatted string. */
+  async function estimateColumnCost(col: Column): Promise<string | null> {
+    const brain = col.config?.brain as { provider?: string; model?: string } | undefined;
+    if (!brain?.provider || !brain?.model) return null;
+    // Count empty rows for this column (reuse getCellValue helper defined at module level)
+    const emptyCount = leads.filter((l) => {
+      const v = getCellValue(l, col);
+      return v === undefined || v === null || v === '';
+    }).length;
+    const rows = emptyCount > 0 ? emptyCount : leads.length;
+    const webSearch = (col.config?.sources as Array<{ type: string }> | undefined)
+      ?.some((s) => s.type === 'web') ?? false;
+    try {
+      const est = await estimateCost({
+        provider: brain.provider,
+        model: brain.model,
+        rows,
+        webSearch,
+      });
+      return `≈ $${est.total.toFixed(4)} for ${rows} row${rows !== 1 ? 's' : ''}`;
+    } catch {
+      return null;
     }
   }
 
@@ -812,6 +856,12 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           isRunnable={isRunnable(colMenu.col)}
           isProtected={Boolean(colMenu.col.config?.protected)}
           onRun={() => runColumn(colMenu.col)}
+          onTest5={isRunnable(colMenu.col) ? () => test5Column(colMenu.col) : undefined}
+          onEstimateCost={
+            isRunnable(colMenu.col) && colMenu.col.config?.brain
+              ? () => estimateColumnCost(colMenu.col)
+              : undefined
+          }
           onEdit={() => {
             setEditColPopover({ col: colMenu.col, rect: colMenu.rect });
             setColMenu(null);

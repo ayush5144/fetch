@@ -6,6 +6,7 @@ import { GrokClient } from './grok';
 import type { LLMClient } from './types';
 
 export * from './types';
+export * from './pricing';
 export { AnthropicClient } from './anthropic';
 export { OpenAIClient } from './openai';
 export { GeminiClient } from './gemini';

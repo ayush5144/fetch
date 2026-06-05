@@ -6,7 +6,15 @@
  *
  * When `isProtected` is true the Delete action is hidden (the column is a
  * fixed column on the example/protected table and cannot be removed).
+ *
+ * Phase E additions:
+ * - "Test 5" — runs the column on only the first 5 empty rows (limit: 5).
+ * - "Estimate cost" — calls /estimate-cost and shows an inline pill before
+ *   the operator fires a full run.
  */
+
+import { useState } from 'react';
+
 interface Props {
   anchorRect: DOMRect;
   columnKey: string;
@@ -15,6 +23,10 @@ interface Props {
   /** When true the Delete option is hidden (protected column). */
   isProtected?: boolean;
   onRun: () => void;
+  /** Phase E — run only the first 5 empty rows. */
+  onTest5?: () => void;
+  /** Phase E — show a cost estimate inline (returns a formatted string like "≈ $0.12 for 50 rows"). */
+  onEstimateCost?: () => Promise<string | null>;
   onEdit: () => void;
   onRename: () => void;
   onDuplicate: () => void;
@@ -29,6 +41,8 @@ export function ColumnMenu({
   isRunnable,
   isProtected,
   onRun,
+  onTest5,
+  onEstimateCost,
   onEdit,
   onRename,
   onDuplicate,
@@ -37,11 +51,27 @@ export function ColumnMenu({
   onDelete,
   onClose,
 }: Props) {
-  const top = Math.min(anchorRect.bottom + 2, window.innerHeight - 280);
-  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 200));
+  const top = Math.min(anchorRect.bottom + 2, window.innerHeight - 340);
+  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 220));
+
+  // Phase E — inline cost estimate state
+  const [costEstimate, setCostEstimate] = useState<string | null>(null);
+  const [estimating, setEstimating] = useState(false);
 
   function handle(fn: () => void) {
     return () => { fn(); onClose(); };
+  }
+
+  async function handleEstimate() {
+    if (!onEstimateCost) return;
+    setEstimating(true);
+    setCostEstimate(null);
+    try {
+      const result = await onEstimateCost();
+      setCostEstimate(result);
+    } finally {
+      setEstimating(false);
+    }
   }
 
   return (
@@ -50,9 +80,36 @@ export function ColumnMenu({
       <div className="col-menu" style={{ top, left }} role="menu">
         {isRunnable && (
           <>
+            {/* Cost estimate pill — shown above run actions */}
+            {onEstimateCost && costEstimate && (
+              <div style={{
+                padding: '5px 12px',
+                fontSize: 11,
+                color: 'var(--ink-soft)',
+                background: 'var(--surface)',
+                borderBottom: '1px solid var(--border)',
+              }}>
+                {costEstimate}
+              </div>
+            )}
             <button className="col-menu-item" onClick={handle(onRun)}>
               <span>▷</span> Run column
             </button>
+            {onTest5 && (
+              <button className="col-menu-item" onClick={handle(onTest5)}>
+                <span>⚡</span> Test 5 rows
+              </button>
+            )}
+            {onEstimateCost && (
+              <button
+                className="col-menu-item"
+                disabled={estimating}
+                onClick={handleEstimate}
+                style={{ color: 'var(--muted)' }}
+              >
+                <span>$</span> {estimating ? 'Estimating…' : 'Estimate cost'}
+              </button>
+            )}
             <div className="col-menu-sep" />
           </>
         )}

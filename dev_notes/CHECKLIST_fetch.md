@@ -337,13 +337,13 @@ only; build after sign-off. Every phase ends with
 
 ## Phase E - Saved Agents, Cost, Test-5
 
-- [ ] `agents` table: save / name / reuse a Dogi or a whole goal-plan
+- [x] `agents` table: save / name / reuse a Dogi or a whole goal-plan
   - Test: saving a Dogi then "use a saved agent" pre-fills its config on a new column.
-- [ ] Cost estimate before a run (pricing table + token counting, incl. web-search cost)
+- [x] Cost estimate before a run (pricing table + token counting, incl. web-search cost)
   - Test: estimated cost for N rows is shown before firing and is within a sane range of actuals.
-- [ ] Test 5 rows before a full-table run
+- [x] Test 5 rows before a full-table run
   - Test: "Test" runs a 5-row sample; "Run all" only enabled after a test (configurable).
-- [ ] Pricing table covers all four providers + their web-search add-on
+- [x] Pricing table covers all four providers + their web-search add-on
   - Test: each provider/model has input/output per-1M and search-per-1k entries.
 
 ## Phase F - Dogi Advanced (Visual Flow) — Stretch

@@ -198,3 +198,44 @@ export const dogiApi = {
   applyPlan: (tableId: string, steps: DogiPlanStep[]) =>
     api.post<ApplyPlanResponse>(`/tables/${tableId}/apply-plan`, { steps }),
 };
+
+// ── Phase E: Saved agents ─────────────────────────────────────────────────────
+
+/** A saved Dogi or goal-plan stored in the agents table. */
+export interface SavedAgent {
+  id: string;
+  name: string;
+  kind: 'dogi' | 'dogi-plan';
+  config: Record<string, unknown>;
+  createdAt: string;
+}
+
+export const agentsApi = {
+  /** List all saved agents. */
+  list: () => api.get<{ agents: SavedAgent[] }>('/agents'),
+
+  /** Save a new agent. */
+  save: (name: string, kind: 'dogi' | 'dogi-plan', config: Record<string, unknown>) =>
+    api.post<{ agent: SavedAgent }>('/agents', { name, kind, config }),
+
+  /** Delete a saved agent by id. */
+  delete: (id: string) => api.del<void>(`/agents/${id}`),
+};
+
+// ── Phase E: Cost estimate ────────────────────────────────────────────────────
+
+export interface CostEstimate {
+  perRow: number;
+  total: number;
+  breakdown: Record<string, number>;
+}
+
+/** Estimate cost before running a Dogi column. */
+export function estimateCost(opts: {
+  provider: string;
+  model: string;
+  rows: number;
+  webSearch?: boolean;
+}): Promise<CostEstimate> {
+  return api.post<CostEstimate>('/estimate-cost', opts);
+}

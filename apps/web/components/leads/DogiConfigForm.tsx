@@ -11,7 +11,12 @@
  *
  * BYOK key is held in state only, never persisted — the parent passes it
  * through `onApiKeyChange` and includes it in run requests only.
+ *
+ * Phase E: `onSaveAsAgent` — optional callback. When provided, a "Save as agent"
+ * button appears at the bottom of the form. The parent handles the API call.
  */
+
+import { useState } from 'react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -155,6 +160,11 @@ interface Props {
   /** BYOK key — kept in parent state, never persisted */
   apiKey?: string;
   onApiKeyChange?: (key: string) => void;
+  /**
+   * Phase E — when provided, a "Save as agent" button is shown.
+   * The callback receives the name the user chose and should call the API.
+   */
+  onSaveAsAgent?: (name: string) => Promise<void>;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -165,7 +175,15 @@ export function DogiConfigForm({
   availableColumns = [],
   apiKey = '',
   onApiKeyChange,
+  onSaveAsAgent,
 }: Props) {
+  // Phase E — save-as-agent state
+  const [savingAgent, setSavingAgent] = useState(false);
+  const [saveAgentName, setSaveAgentName] = useState('');
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveAgentErr, setSaveAgentErr] = useState<string | null>(null);
+  const [saveAgentOk, setSaveAgentOk] = useState(false);
+
   const brainRequired = needsBrain(value.sources);
 
   // Ensure brain is present when needed
@@ -623,6 +641,88 @@ export function DogiConfigForm({
         </div>
       )}
 
+      {/* ── Save as agent (Phase E) ─────────────────────────────────────── */}
+      {onSaveAsAgent && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+          {!showSaveInput ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 12 }}
+              onClick={() => { setShowSaveInput(true); setSaveAgentErr(null); setSaveAgentOk(false); }}
+            >
+              ＋ Save as agent…
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Save as agent
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  placeholder="Agent name, e.g. Find CEO email"
+                  value={saveAgentName}
+                  onChange={(e) => { setSaveAgentName(e.target.value); setSaveAgentErr(null); }}
+                  style={{ fontSize: 12, flex: 1 }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveAgent();
+                    }
+                    if (e.key === 'Escape') {
+                      setShowSaveInput(false);
+                      setSaveAgentName('');
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-accent btn-sm"
+                  disabled={savingAgent || !saveAgentName.trim()}
+                  onClick={handleSaveAgent}
+                  style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                >
+                  {savingAgent ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => { setShowSaveInput(false); setSaveAgentName(''); setSaveAgentErr(null); }}
+                  style={{ fontSize: 12 }}
+                >
+                  ✕
+                </button>
+              </div>
+              {saveAgentErr && (
+                <div style={{ fontSize: 11, color: 'var(--red)' }}>{saveAgentErr}</div>
+              )}
+              {saveAgentOk && (
+                <div style={{ fontSize: 11, color: 'var(--green)' }}>Saved! You can reuse this agent when adding a column.</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
+
+  async function handleSaveAgent() {
+    if (!saveAgentName.trim() || !onSaveAsAgent) return;
+    setSavingAgent(true);
+    setSaveAgentErr(null);
+    try {
+      await onSaveAsAgent(saveAgentName.trim());
+      setSaveAgentOk(true);
+      setSaveAgentName('');
+      setShowSaveInput(false);
+      // Re-show success briefly
+      setTimeout(() => setSaveAgentOk(false), 3000);
+    } catch (e) {
+      setSaveAgentErr(e instanceof Error ? e.message : 'Failed to save agent');
+    } finally {
+      setSavingAgent(false);
+    }
+  }
 }

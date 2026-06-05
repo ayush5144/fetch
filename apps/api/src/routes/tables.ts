@@ -240,6 +240,8 @@ tablesRoutes.post('/:id/leads/delete', async (c) => {
 
 const runTableSchema = z.object({
   leadIds: z.array(z.string()).default([]),
+  /** Run only the FIRST `limit` empty cells per dogi column — "Test N rows". */
+  limit: z.number().int().nonnegative().optional(),
   /** Optional BYOK key for this run; passed to each job, never persisted. */
   apiKey: z.string().optional(),
 });
@@ -253,7 +255,7 @@ const runTableSchema = z.object({
  */
 tablesRoutes.post('/:id/run', async (c) => {
   const tableId = c.req.param('id');
-  const { leadIds, apiKey } = runTableSchema.parse(await c.req.json().catch(() => ({})));
+  const { leadIds, limit, apiKey } = runTableSchema.parse(await c.req.json().catch(() => ({})));
 
   const cols = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
   const targetLeads = leadIds.length
@@ -266,8 +268,10 @@ tablesRoutes.post('/:id/run', async (c) => {
   let formula = 0;
   for (const column of cols) {
     if (column.type === 'dogi') {
-      for (const lead of targetLeads) {
-        if (!isCellEmpty(lead, column.key)) continue; // run-only-if-empty
+      // run-only-if-empty; with a `limit`, only the first N empty cells fire.
+      const empties = targetLeads.filter((lead) => isCellEmpty(lead, column.key));
+      const toRun = limit != null ? empties.slice(0, limit) : empties;
+      for (const lead of toRun) {
         await enqueue('enrich', { leadId: lead.id, columnKey: column.key, apiKey }, { leadId: lead.id });
         enqueued++;
       }
@@ -464,6 +468,8 @@ tablesRoutes.post('/:id/columns', async (c) => {
 const runSchema = z.object({
   leadIds: z.array(z.string()).default([]),
   force: z.boolean().default(false),
+  /** Run only the FIRST `limit` of the to-run leads — the "Test 5 rows" path. */
+  limit: z.number().int().nonnegative().optional(),
   /** Optional BYOK key for this run; passed to the job, never persisted. */
   apiKey: z.string().optional(),
 });
@@ -471,9 +477,9 @@ const runSchema = z.object({
 tablesRoutes.post('/:id/columns/:key/run', async (c) => {
   const tableId = c.req.param('id');
   const key = c.req.param('key');
-  const { leadIds, force, apiKey } = runSchema.parse(await c.req.json().catch(() => ({})));
+  const { leadIds, force, limit, apiKey } = runSchema.parse(await c.req.json().catch(() => ({})));
 
-  const plan = await planRun(tableId, key, leadIds, { force });
+  const plan = await planRun(tableId, key, leadIds, { force, limit });
   if (!plan) return c.json({ error: 'unknown column' }, 404);
 
   if (plan.column.type === 'formula') {

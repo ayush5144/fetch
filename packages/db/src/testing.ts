@@ -12,6 +12,7 @@ import { DEFAULT_TABLE_ID } from './schema';
 
 /** Every table, child-first, so a CASCADE TRUNCATE is unambiguous. */
 const ALL_TABLES = [
+  'agents',
   'audit_log',
   'events',
   'jobs',

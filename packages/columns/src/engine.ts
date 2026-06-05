@@ -38,12 +38,15 @@ export interface RunPlan {
 /**
  * Decide what a run touches within a table. `force` ignores run-only-if-empty
  * (a deliberate re-run). With no explicit leadIds it scans the whole table.
+ * `limit` runs only the FIRST N of the to-run leads — the "Test 5 rows" path —
+ * so a sample fires before committing to the full table. Leads dropped by the
+ * limit are NOT counted as skipped (they're deferred, not already filled).
  */
 export async function planRun(
   tableId: string,
   columnKey: string,
   leadIds: string[],
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; limit?: number } = {},
 ): Promise<RunPlan | null> {
   const column = await getColumn(tableId, columnKey);
   if (!column) return null;
@@ -52,8 +55,11 @@ export async function planRun(
     ? await db.query.leads.findMany({ where: inArray(leads.id, leadIds) })
     : await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
 
-  const toRun = opts.force ? rows : rows.filter((l) => isCellEmpty(l, columnKey));
-  return { column, toRun, skipped: rows.length - toRun.length };
+  const eligible = opts.force ? rows : rows.filter((l) => isCellEmpty(l, columnKey));
+  const skipped = rows.length - eligible.length;
+  const toRun =
+    opts.limit != null && opts.limit >= 0 ? eligible.slice(0, opts.limit) : eligible;
+  return { column, toRun, skipped };
 }
 
 /**
