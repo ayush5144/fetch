@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env'; // MUST be first — loads .env before any DB/queue access.
 import { getEnv, getBoss, logger, markJob, QUEUES, startQueues, stopQueues } from '@fetch/core';
 import { closeDb } from '@fetch/db';
 import { enrichHandler } from './handlers/enrich';

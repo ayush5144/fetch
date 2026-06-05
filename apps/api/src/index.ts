@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env'; // MUST be first — loads .env before any DB/env access.
 import { serve } from '@hono/node-server';
 import { getEnv, logger, startQueues, stopQueues } from '@fetch/core';
 import { closeDb } from '@fetch/db';

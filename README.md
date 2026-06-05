@@ -17,22 +17,33 @@ Instantly and Smartlead are delivery rails behind an adapter, not the product.
 
 The minimum viable deploy is **one Postgres + the app**. No Redis, no broker.
 
+### One command
+
 ```bash
-# 1. Configure
-cp .env.example .env          # only DATABASE_URL is required to boot
+scripts/dev.sh
+```
 
-# 2. Start Postgres (queue lives inside it — no Redis)
-docker compose -f infra/docker-compose.yml up -d postgres
+It creates `.env` if missing, starts Postgres in Docker (host port **5433**, so it
+won't clash with an existing Postgres on 5432), installs, migrates, seeds demo
+data, then runs the API (`:4000`), worker, and web UI (`:3000`) together. Ctrl-C
+stops all three. Useful knobs:
 
-# 3. Install + migrate + seed
-pnpm install
-pnpm db:migrate
-pnpm seed                     # optional: demo columns, a prompt, sample leads
+```bash
+PG_PORT=5432 scripts/dev.sh    # use a different Postgres host port
+SEED=0       scripts/dev.sh    # skip demo data
+scripts/dev.sh setup           # bootstrap only, don't start the processes
+```
 
-# 4. Run the three processes (separate terminals)
-pnpm dev:api                  # http://localhost:4000  (front door)
-pnpm dev:worker               # pg-boss consumers (the slow work)
-pnpm dev:web                  # http://localhost:3000  (operator UI)
+### Manual (three terminals)
+
+```bash
+cp .env.example .env           # only DATABASE_URL is required to boot
+docker run -d --name fetch-pg -e POSTGRES_USER=fetch -e POSTGRES_PASSWORD=fetch \
+  -e POSTGRES_DB=fetch -p 5433:5432 postgres:18   # set DATABASE_URL to :5433
+pnpm install && pnpm db:migrate && pnpm seed
+pnpm dev:api                   # http://localhost:4000  (front door)
+pnpm dev:worker                # pg-boss consumers (the slow work)
+pnpm dev:web                   # http://localhost:3000  (operator UI)
 ```
 
 Open <http://localhost:3000>, import a CSV, add a column, and run it.
