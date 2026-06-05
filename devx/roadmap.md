@@ -68,6 +68,14 @@ the grid is usable early and Dogi lands on top of it.
 - *Done when:* the operator chooses if/how rows merge; nothing is force-merged.
 → [dedupe-and-accounts.md](./dedupe-and-accounts.md)
 
+## Phase H · MCP (optional, external boundary)
+- **Fetch-as-MCP-server**: expose tables/leads/columns/run to external AI clients
+  (Claude Desktop, Cursor…) — a thin wrapper over the API, reusing `FETCH_API_TOKEN`.
+- **Dogi-as-MCP-client**: let a Dogi use external MCP servers the user registers as
+  extra tools (opt-in per Dogi), alongside native/serper/firecrawl.
+- *Not in the critical path* — Dogi ships on direct internal tools first.
+→ [mcp.md](./mcp.md)
+
 ---
 
 ## Explicitly deferred (still in the repo, not the focus now)
