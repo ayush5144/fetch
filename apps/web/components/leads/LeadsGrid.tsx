@@ -97,9 +97,14 @@ function getCellValue(lead: Lead, col: Column): unknown {
   return lead.data?.[col.key];
 }
 
-// Default minimum column width in px
-const MIN_COL_WIDTH = 100;
+// Column widths. Data columns never shrink below MIN_COL_WIDTH; the table grows
+// to the sum of widths and scrolls horizontally past that point.
+const MIN_COL_WIDTH = 140;
 const DEFAULT_COL_WIDTH = 180;
+// Fixed widths of the three permanent (pinned) columns.
+const CHECK_W = 40;
+const NUM_W = 44;
+const ADD_W = 52;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -513,9 +518,20 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
         </button>
       </div>
 
-      {/* Scrollable grid */}
+      {/* Scrollable grid. The table width is the sum of all column widths so
+          columns keep a real width (never squish); past the viewport it scrolls
+          horizontally, while the first two and the last column stay pinned. */}
       <div className="grid-scroll">
-        <table className="grid-tbl">
+        <table
+          className="grid-tbl"
+          style={{
+            width:
+              CHECK_W +
+              NUM_W +
+              ADD_W +
+              columns.reduce((sum, c) => sum + (colWidths[c.id] ?? DEFAULT_COL_WIDTH), 0),
+          }}
+        >
           <colgroup>
             <col className="grid-col-check" />
             <col className="grid-col-num" />

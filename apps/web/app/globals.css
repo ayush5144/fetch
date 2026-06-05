@@ -654,8 +654,13 @@ table.grid-tbl {
   left: 40px;
   z-index: 6;
 }
+/* Pin the trailing + column to the right (permanent, like the left two). */
 .grid-tbl thead th:last-child {
+  right: 0;
+  left: auto;
+  z-index: 6;
   border-right: none;
+  border-left: 1px solid var(--border);
 }
 
 /* Header inner layout */
@@ -764,8 +769,17 @@ table.grid-tbl {
   position: relative;
   background: var(--bg);
 }
+/* Pinned trailing + column in body rows. */
 .grid-tbl tbody td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
   border-right: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+.grid-tbl tbody tr:hover td:last-child {
+  background: var(--surface);
 }
 .grid-tbl tbody tr:hover td {
   background: var(--surface);
