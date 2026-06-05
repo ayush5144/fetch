@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { columns as columnsTable, db, jobs, leads, sources, tables } from '@fetch/db';
 import { audit, enqueue, ingestLead, listTablesWithCounts } from '@fetch/core';
-import { getColumn, planRun, runFormulaColumn } from '@fetch/columns';
+import { getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
 import {
   CsvNormalizer,
   identityFieldFor,
@@ -211,6 +211,70 @@ tablesRoutes.post('/:id/leads/import', async (c) => {
     }
   }
   return c.json({ imported, merged, total: records.length });
+});
+
+const bulkDeleteSchema = z.object({ leadIds: z.array(z.string()).default([]) });
+
+/**
+ * Bulk-delete leads from a table. Only leads that actually belong to this table
+ * are removed — ids pointing at other tables are ignored, so a table-scoped
+ * call can never reach across tables. Events/jobs cascade via FK. Audited.
+ */
+tablesRoutes.post('/:id/leads/delete', async (c) => {
+  const tableId = c.req.param('id');
+  const { leadIds } = bulkDeleteSchema.parse(await c.req.json().catch(() => ({})));
+  if (leadIds.length === 0) return c.json({ deleted: 0 });
+
+  const deleted = await db
+    .delete(leads)
+    .where(and(eq(leads.tableId, tableId), inArray(leads.id, leadIds)))
+    .returning({ id: leads.id, email: leads.email });
+
+  for (const row of deleted) {
+    await audit({ entity: 'lead', entityId: row.id, action: 'delete', diff: { email: row.email, tableId } });
+  }
+  return c.json({ deleted: deleted.length });
+});
+
+const runTableSchema = z.object({
+  leadIds: z.array(z.string()).default([]),
+  /** Optional BYOK key for this run; passed to each job, never persisted. */
+  apiKey: z.string().optional(),
+});
+
+/**
+ * Run a table's RUNNABLE columns over a set of rows. For each selected lead ×
+ * each `dogi` column whose cell is empty, enqueue one `enrich` job. Each
+ * `formula` column is recomputed inline (cheap, no job). `manual` columns are
+ * skipped. Run-only-if-empty governs the dogi enqueues. Leads not in this table
+ * are ignored. Returns the count of enqueued jobs and recomputed formula cells.
+ */
+tablesRoutes.post('/:id/run', async (c) => {
+  const tableId = c.req.param('id');
+  const { leadIds, apiKey } = runTableSchema.parse(await c.req.json().catch(() => ({})));
+
+  const cols = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const targetLeads = leadIds.length
+    ? await db.query.leads.findMany({
+        where: and(eq(leads.tableId, tableId), inArray(leads.id, leadIds)),
+      })
+    : [];
+
+  let enqueued = 0;
+  let formula = 0;
+  for (const column of cols) {
+    if (column.type === 'dogi') {
+      for (const lead of targetLeads) {
+        if (!isCellEmpty(lead, column.key)) continue; // run-only-if-empty
+        await enqueue('enrich', { leadId: lead.id, columnKey: column.key, apiKey }, { leadId: lead.id });
+        enqueued++;
+      }
+    } else if (column.type === 'formula') {
+      formula += await runFormulaColumn(tableId, column.key, targetLeads.map((l) => l.id));
+    }
+    // manual columns are skipped.
+  }
+  return c.json({ enqueued, formula }, 202);
 });
 
 // ── Columns within a table ────────────────────────────────────────────────────

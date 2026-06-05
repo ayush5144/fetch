@@ -56,11 +56,11 @@ export function ColumnMenu({
             <div className="col-menu-sep" />
           </>
         )}
-        <button className="col-menu-item" onClick={handle(onEdit)}>
-          <span>✎</span> Edit column
-        </button>
         <button className="col-menu-item" onClick={handle(onRename)}>
-          <span>Aa</span> Rename
+          <span>Aa</span> Edit name
+        </button>
+        <button className="col-menu-item" onClick={handle(onEdit)}>
+          <span>✎</span> Edit type / config
         </button>
         <button className="col-menu-item" onClick={handle(onDuplicate)}>
           <span>⧉</span> Duplicate

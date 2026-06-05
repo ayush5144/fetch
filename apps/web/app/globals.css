@@ -578,29 +578,39 @@ table.tbl {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  /* Outer breathing room lives HERE (not on the scroll container) so the sticky
+     pinned columns pin AND clip at the same edge — data never bleeds past them. */
+  padding: 0 24px;
 }
 
 .grid-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 24px;
+  padding: 10px 0;
   background: var(--bg);
   flex-shrink: 0;
   flex-wrap: wrap;
+  position: relative;
 }
 .grid-toolbar .spacer {
   flex: 1;
 }
+/* Bulk-action bar wrapper — floats inside the toolbar row */
+.grid-toolbar-bulk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-/* The scrollable spreadsheet area. Outer padding so the table floats with
-   breathing room from the sidebar and edges instead of running flush. */
+/* The scrollable spreadsheet area. NO horizontal padding — the breathing room
+   is on .grid-page, so the sticky columns pin and clip at the scroll edges and
+   data cells never appear past the pinned columns. */
 .grid-scroll {
   flex: 1;
   overflow: auto;
   position: relative;
-  /* Horizontal + bottom only — no top padding so the sticky header stays flush. */
-  padding: 0 24px 24px;
+  padding: 0 0 24px;
 }
 
 /* Grid table — no cell padding added here; cells control their own */
@@ -646,21 +656,29 @@ table.grid-tbl {
   user-select: none;
   vertical-align: middle;
 }
+/* Left-pinned header cells: checkbox + row# */
 .grid-tbl thead th:first-child {
   left: 0;
-  z-index: 6;
+  z-index: 8; /* highest: pinned header on top of everything */
+  background: var(--surface);
+  /* divider only on the very end of the pinned left block (row# column carries it) */
 }
 .grid-tbl thead th:nth-child(2) {
   left: 40px;
-  z-index: 6;
+  z-index: 8;
+  background: var(--surface);
+  /* solid divider between pinned-left and scroll area */
+  border-right: 2px solid var(--border-strong);
 }
 /* Pin the trailing + column to the right (permanent, like the left two). */
 .grid-tbl thead th:last-child {
   right: 0;
   left: auto;
-  z-index: 6;
+  z-index: 8;
   border-right: none;
-  border-left: 1px solid var(--border);
+  /* solid divider between scroll area and pinned-right */
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface);
 }
 
 /* Header inner layout */
@@ -768,44 +786,48 @@ table.grid-tbl {
   vertical-align: middle;
   position: relative;
   background: var(--bg);
-}
-/* Pinned trailing + column in body rows. */
-.grid-tbl tbody td:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  border-right: none;
-  border-left: 1px solid var(--border);
-  background: var(--bg);
-}
-.grid-tbl tbody tr:hover td:last-child {
-  background: var(--surface);
-}
-.grid-tbl tbody tr:hover td {
-  background: var(--surface);
-}
-.grid-tbl tbody tr:hover td:first-child,
-.grid-tbl tbody tr:hover td:nth-child(2) {
-  background: var(--surface);
+  /* normal data cells stay BELOW all pinned columns */
+  z-index: 0;
 }
 
-/* Sticky left columns in body */
+/* Sticky left columns in body — z-index 3 so they sit above normal cells */
 .grid-tbl tbody td:first-child {
   position: sticky;
   left: 0;
-  z-index: 2;
-  background: var(--bg);
-}
-.grid-tbl tbody tr:hover td:first-child {
-  background: var(--surface);
+  z-index: 3;
+  background: var(--bg); /* opaque — never transparent */
 }
 .grid-tbl tbody td:nth-child(2) {
   position: sticky;
   left: 40px;
-  z-index: 2;
-  background: var(--bg);
+  z-index: 3;
+  background: var(--bg); /* opaque */
+  /* solid divider between pinned-left and scroll area */
+  border-right: 2px solid var(--border-strong);
+}
+
+/* Pinned trailing + column in body rows — z-index 3, same level as left pins */
+.grid-tbl tbody td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  border-right: none;
+  /* solid divider between scroll area and pinned-right */
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg); /* opaque */
+}
+
+/* Row hover: update ONLY the pinned cells' bg, keep the divider borders */
+.grid-tbl tbody tr:hover td {
+  background: var(--surface);
+}
+.grid-tbl tbody tr:hover td:first-child {
+  background: var(--surface);
 }
 .grid-tbl tbody tr:hover td:nth-child(2) {
+  background: var(--surface);
+}
+.grid-tbl tbody tr:hover td:last-child {
   background: var(--surface);
 }
 
@@ -1194,6 +1216,64 @@ table.grid-tbl {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── Bulk-action bar (floats above grid when rows are selected) ─────────────*/
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-wrap: wrap;
+}
+.bulk-bar-count {
+  font-weight: 600;
+  color: #fff;
+  margin-right: 4px;
+}
+.bulk-bar-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+.bulk-bar-btn {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s ease;
+}
+.bulk-bar-btn:hover {
+  background: rgba(255,255,255,0.22);
+}
+.bulk-bar-btn.danger {
+  background: rgba(210, 69, 47, 0.7);
+  border-color: rgba(210, 69, 47, 0.5);
+}
+.bulk-bar-btn.danger:hover {
+  background: var(--red);
+}
+.bulk-bar-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  opacity: 0.72;
+}
+.bulk-bar-btn.ghost:hover {
+  background: rgba(255,255,255,0.1);
+  opacity: 1;
 }
 
 /* ── Table card menu button ─────────────────────────────────────────────────*/

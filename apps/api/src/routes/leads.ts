@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { CsvNormalizer, ManualNormalizer, readCsvHeaders } from '@fetch/connectors';
-import { enqueue, ingestLead } from '@fetch/core';
+import { audit, enqueue, ingestLead } from '@fetch/core';
 import { DEFAULT_TABLE_ID, db, leads, sources } from '@fetch/db';
 import { desc, eq } from 'drizzle-orm';
 import { getColumn, validateCellValue, valueTypeOf } from '@fetch/columns';
@@ -177,6 +177,18 @@ leadsRoutes.post('/:id/run/:columnKey', async (c) => {
   // dogi | formula resolve in the worker via the enrich queue.
   const jobId = await enqueue('enrich', { leadId, columnKey, apiKey: body.apiKey }, { leadId });
   return c.json({ jobId }, 202);
+});
+
+/**
+ * Delete one lead. Its events and jobs cascade away via FK. Audited as a
+ * state change. 404 when the lead doesn't exist.
+ */
+leadsRoutes.delete('/:id', async (c) => {
+  const id = c.req.param('id');
+  const [deleted] = await db.delete(leads).where(eq(leads.id, id)).returning();
+  if (!deleted) return c.json({ error: 'not found' }, 404);
+  await audit({ entity: 'lead', entityId: id, action: 'delete', diff: { email: deleted.email } });
+  return c.json({ ok: true });
 });
 
 /** Approve / reject a lead's personalized copy. */

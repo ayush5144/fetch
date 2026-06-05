@@ -170,6 +170,9 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   const rowDrag = useRef<{ id: string } | null>(null);
   const [rowDragOver, setRowDragOver] = useState<{ id: string; side: 'above' | 'below' } | null>(null);
 
+  // ── Bulk actions
+  const [bulkBusy, setBulkBusy] = useState<'delete' | 'run' | null>(null);
+
   // ── Add row (blank — the user fills this table's own columns inline)
   const [addLeadBusy, setAddLeadBusy] = useState(false);
 
@@ -375,6 +378,38 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
     }
   }
 
+  async function bulkDelete() {
+    const leadIds = [...selected];
+    if (leadIds.length === 0) return;
+    if (!confirm(`Delete ${leadIds.length} row${leadIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setBulkBusy('delete');
+    try {
+      await api.post(`/tables/${tableId}/leads/delete`, { leadIds });
+      setSelected(new Set());
+      onRefreshLeads();
+    } catch (e) {
+      console.error('bulk delete failed', e);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function bulkRun() {
+    const leadIds = [...selected];
+    if (leadIds.length === 0) return;
+    setBulkBusy('run');
+    try {
+      await api.post(`/tables/${tableId}/run`, { leadIds });
+      setTimeout(() => {
+        onRefreshLeads();
+        setBulkBusy(null);
+      }, 500);
+    } catch (e) {
+      console.error('bulk run failed', e);
+      setBulkBusy(null);
+    }
+  }
+
   // ── Column resize ──────────────────────────────────────────────────────────
 
   function onResizeStart(e: React.MouseEvent, col: Column, th: HTMLTableCellElement) {
@@ -507,11 +542,34 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
     <>
       {/* Toolbar */}
       <div className="grid-toolbar">
-        {selected.size > 0 && (
-          <span className="muted" style={{ fontSize: 12 }}>
-            {selected.size} selected
-          </span>
-        )}
+        {selected.size > 0 ? (
+          /* Bulk-action bar — replaces normal toolbar content when rows are checked */
+          <div className="bulk-bar">
+            <span className="bulk-bar-count">{selected.size} selected</span>
+            <div className="bulk-bar-sep" />
+            <button
+              className="bulk-bar-btn"
+              disabled={bulkBusy === 'run'}
+              onClick={bulkRun}
+            >
+              {bulkBusy === 'run' ? 'Running…' : '▷ Run'}
+            </button>
+            <button
+              className="bulk-bar-btn danger"
+              disabled={bulkBusy === 'delete'}
+              onClick={bulkDelete}
+            >
+              {bulkBusy === 'delete' ? 'Deleting…' : '🗑 Delete'}
+            </button>
+            <div className="bulk-bar-sep" />
+            <button
+              className="bulk-bar-btn ghost"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear selection
+            </button>
+          </div>
+        ) : null}
         <div className="spacer" />
         <button className="btn btn-ghost btn-sm" onClick={() => setShowImport(true)}>
           Import CSV

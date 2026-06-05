@@ -407,3 +407,21 @@ only; build after sign-off. Every phase ends with
 - [x] Seeded example **"Fetch table"**: a non-deletable example table whose **fixed columns are also non-deletable** (protection applies ONLY to this example table). Everything else (add rows/columns, run, edit) works normally.
   - Test: DELETE on the example table → 403; DELETE on a fixed column → 403; the UI hides those delete actions; a normal table/column deletes fine.
 
+
+## Phase B.2 - Grid polish round 2 + row actions
+
+- [x] Grid outer spacing (table not flush to sidebar/edges); revert loose cell padding.
+- [x] "+ New lead" → "+ Add row"; blank row uses the table's own columns (no preassigned fields), appended at the end.
+- [x] Overview: each table card has an always-visible ⋯ menu → delete (protected example table excepted).
+- [x] Minimum column width + horizontal scroll past the viewport; first two (checkbox, row#) and last (+ add) columns pinned.
+- [x] Pinned columns: fully OPAQUE background + a fixed divider border, and scrolling data columns clip BEHIND them (never bleed past/over the pinned columns).
+  - Test: scroll horizontally — data cells disappear under the pinned columns; no see-through.
+- [x] Dogi config panel: render as a proper modal (or fully scrollable) so the whole form is reachable header→bottom (incl. the lower sources like scrape). Currently it's cut off ~halfway.
+  - Test: open a Dogi column config; every section (instruction → sources incl. scrape → policy → brain) is scrollable into view.
+- [x] Column ⋯ menu: add **Edit name** and **Edit type** (value type / fill method), alongside run/duplicate/delete.
+  - Test: rename a column and change its type from the ⋯ menu; both persist.
+- [x] Row selection actions: when rows are checked, show a bulk-action bar — **Delete**, **Run** (run the table's runnable columns on the selected rows), Clear.
+  - Test: select rows → Delete removes them; Run enqueues jobs only for the selected rows.
+- [x] Backend: `DELETE /leads/:id`, bulk `POST /tables/:id/leads/delete { leadIds }`, and `POST /tables/:id/run { leadIds }` (run runnable columns on those rows).
+  - Test: delete endpoints remove the rows; run enqueues per (selected lead × runnable column).
+

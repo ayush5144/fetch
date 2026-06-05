@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_TABLE_ID, columns, db, jobs, leads } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
+import { startQueues, stopQueues } from '@fetch/core';
 import { app } from '../src/app';
 
 /**
@@ -248,5 +249,96 @@ describe('GET /tables/:id/cell-jobs', () => {
 
     const { jobs: out } = await (await app.request(`/tables/${T}/cell-jobs`)).json();
     expect(out).toHaveLength(0);
+  });
+});
+
+describe('DELETE /leads/:id — single delete', () => {
+  beforeEach(truncateAll);
+
+  it('deletes a lead and returns { ok: true }', async () => {
+    const lead = await makeLead('gone@x.com');
+    const res = await app.request(`/leads/${lead.id}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const fresh = await db.query.leads.findFirst({ where: eq(leads.id, lead.id) });
+    expect(fresh).toBeUndefined();
+  });
+
+  it('404s for an unknown lead', async () => {
+    const res = await app.request(`/leads/00000000-0000-0000-0000-000000000000`, { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /tables/:id/leads/delete — bulk delete', () => {
+  beforeEach(truncateAll);
+
+  it('deletes only the given leads and returns the count', async () => {
+    const a = await makeLead('a@x.com');
+    const b = await makeLead('b@x.com');
+    const c = await makeLead('c@x.com');
+
+    const res = await app.request(`/tables/${T}/leads/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ leadIds: [a.id, b.id] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: 2 });
+
+    const remaining = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(remaining.map((l) => l.id)).toEqual([c.id]);
+  });
+
+  it('does not delete a lead that lives in another table', async () => {
+    const [other] = await db.insert((await import('@fetch/db')).tables).values({ name: 'Other' }).returning();
+    const mine = await makeLead('mine@x.com');
+    const [theirs] = await db.insert(leads).values({ tableId: other!.id, email: 'theirs@x.com' }).returning();
+
+    const res = await app.request(`/tables/${T}/leads/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // both ids passed, but theirs belongs to another table → must survive
+      body: JSON.stringify({ leadIds: [mine.id, theirs!.id] }),
+    });
+    expect(await res.json()).toEqual({ deleted: 1 });
+
+    const survived = await db.query.leads.findFirst({ where: eq(leads.id, theirs!.id) });
+    expect(survived).toBeTruthy();
+    const gone = await db.query.leads.findFirst({ where: eq(leads.id, mine.id) });
+    expect(gone).toBeUndefined();
+  });
+});
+
+describe('POST /tables/:id/run — run runnable columns over rows', () => {
+  beforeAll(startQueues);
+  afterAll(stopQueues);
+  beforeEach(truncateAll);
+
+  it('enqueues enrich jobs only for selected leads × dogi columns with an empty cell', async () => {
+    await makeColumn('ceo_email', 'CEO email', { type: 'dogi', config: { valueType: 'email' } });
+    await makeColumn('note', 'Note', { type: 'manual' }); // skipped
+
+    const selected = await makeLead('sel@x.com');
+    // a second lead that is NOT selected → no job for it
+    await makeLead('other@x.com');
+    // a lead whose dogi cell is already filled → run-only-if-empty skips it
+    const [filled] = await db
+      .insert(leads)
+      .values({ tableId: T, email: 'filled@x.com', data: { ceo_email: 'set@x.com' } })
+      .returning();
+
+    const res = await app.request(`/tables/${T}/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ leadIds: [selected.id, filled!.id] }),
+    });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ enqueued: 1, formula: 0 });
+
+    const enrichJobs = await db.query.jobs.findMany({ where: eq(jobs.type, 'enrich') });
+    expect(enrichJobs).toHaveLength(1);
+    expect(enrichJobs[0]!.leadId).toBe(selected.id);
+    expect((enrichJobs[0]!.payload as any).columnKey).toBe('ceo_email');
   });
 });

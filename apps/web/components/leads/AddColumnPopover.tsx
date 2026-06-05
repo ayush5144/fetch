@@ -205,133 +205,152 @@ export function AddColumnPopover({
       <div className="col-popover-backdrop" onClick={onClose} />
       <div
         className="col-popover"
-        style={{ ...style, width: selectedType.id === 'dogi' ? 360 : 320, maxHeight: 'calc(100vh - 40px)', overflow: 'auto' }}
+        style={{
+          ...style,
+          width: selectedType.id === 'dogi' ? 380 : 320,
+          maxHeight: 'min(80vh, 640px)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          padding: 0,
+        }}
         ref={popRef}
         onKeyDown={handleKeyDown}
       >
-        {/* Header */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>
-          {isEdit ? 'Edit column' : 'Add column'}
-        </div>
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {/* Header */}
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>
+            {isEdit ? 'Edit column' : 'Add column'}
+          </div>
 
-        {/* Label */}
-        <div className="field" style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4, display: 'block' }}>
-            Column name
-          </label>
-          <input
-            ref={labelRef}
-            className="input"
-            placeholder="e.g. Company size"
-            value={label}
-            onChange={(e) => { setLabel(e.target.value); setErr(null); }}
-            style={{ fontSize: 13 }}
-          />
-          {!isEdit && key && (
-            <span className="muted" style={{ fontSize: 11 }}>
-              key: <span className="kbd">{key}</span>
-            </span>
+          {/* Label */}
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4, display: 'block' }}>
+              Column name
+            </label>
+            <input
+              ref={labelRef}
+              className="input"
+              placeholder="e.g. Company size"
+              value={label}
+              onChange={(e) => { setLabel(e.target.value); setErr(null); }}
+              style={{ fontSize: 13 }}
+            />
+            {!isEdit && key && (
+              <span className="muted" style={{ fontSize: 11 }}>
+                key: <span className="kbd">{key}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Type picker (hidden in edit mode — type can't change) */}
+          {!isEdit && (
+            <div style={{ marginBottom: 8 }}>
+              <div className="type-picker-section">Value type</div>
+              <div className="type-picker">
+                {valueTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedType(t)}
+                    title={t.blurb}
+                  >
+                    <span className="type-picker-icon">{t.icon}</span>
+                    <span className="type-picker-label">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="type-picker-section" style={{ marginTop: 8 }}>Fill method</div>
+              <div className="type-picker" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                {fillTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedType(t)}
+                    title={t.blurb}
+                  >
+                    <span className="type-picker-icon">{t.icon}</span>
+                    <span className="type-picker-label">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Formula input */}
+          {selectedType.id === 'formula' && (
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
+                Expression
+              </label>
+              <input
+                className="input"
+                placeholder="e.g. company_size * 0.5"
+                value={formula}
+                onChange={(e) => setFormula(e.target.value)}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+          )}
+
+          {/* Select options */}
+          {selectedType.id === 'select' && (
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
+                Options (comma-separated)
+              </label>
+              <input
+                className="input"
+                placeholder="e.g. Hot, Warm, Cold"
+                value={selectOptions}
+                onChange={(e) => setSelectOptions(e.target.value)}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+          )}
+
+          {/* Dogi config */}
+          {selectedType.id === 'dogi' && (
+            <div style={{ marginBottom: 4 }}>
+              <DogiConfigForm
+                value={dogiConfig}
+                onChange={setDogiConfig}
+                availableColumns={availableColumns}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+              />
+            </div>
+          )}
+
+          {/* Error */}
+          {err && (
+            <div style={{
+              padding: '8px 10px',
+              background: 'var(--red-soft)',
+              color: 'var(--red)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 12,
+              marginTop: 8,
+            }}>
+              {err}
+            </div>
           )}
         </div>
 
-        {/* Type picker (hidden in edit mode — type can't change) */}
-        {!isEdit && (
-          <div style={{ marginBottom: 8 }}>
-            <div className="type-picker-section">Value type</div>
-            <div className="type-picker">
-              {valueTypes.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedType(t)}
-                  title={t.blurb}
-                >
-                  <span className="type-picker-icon">{t.icon}</span>
-                  <span className="type-picker-label">{t.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="type-picker-section" style={{ marginTop: 8 }}>Fill method</div>
-            <div className="type-picker" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-              {fillTypes.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedType(t)}
-                  title={t.blurb}
-                >
-                  <span className="type-picker-icon">{t.icon}</span>
-                  <span className="type-picker-label">{t.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Formula input */}
-        {selectedType.id === 'formula' && (
-          <div className="field" style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
-              Expression
-            </label>
-            <input
-              className="input"
-              placeholder="e.g. company_size * 0.5"
-              value={formula}
-              onChange={(e) => setFormula(e.target.value)}
-              style={{ fontSize: 13 }}
-            />
-          </div>
-        )}
-
-        {/* Select options */}
-        {selectedType.id === 'select' && (
-          <div className="field" style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
-              Options (comma-separated)
-            </label>
-            <input
-              className="input"
-              placeholder="e.g. Hot, Warm, Cold"
-              value={selectOptions}
-              onChange={(e) => setSelectOptions(e.target.value)}
-              style={{ fontSize: 13 }}
-            />
-          </div>
-        )}
-
-        {/* Dogi config */}
-        {selectedType.id === 'dogi' && (
-          <div style={{ marginBottom: 12 }}>
-            <DogiConfigForm
-              value={dogiConfig}
-              onChange={setDogiConfig}
-              availableColumns={availableColumns}
-              apiKey={apiKey}
-              onApiKeyChange={setApiKey}
-            />
-          </div>
-        )}
-
-        {/* Error */}
-        {err && (
-          <div style={{
-            padding: '8px 10px',
-            background: 'var(--red-soft)',
-            color: 'var(--red)',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 12,
-            marginBottom: 10,
-          }}>
-            {err}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        {/* Sticky footer — always reachable */}
+        <div style={{
+          display: 'flex',
+          gap: 8,
+          justifyContent: 'flex-end',
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border)',
+          background: 'var(--bg)',
+          flexShrink: 0,
+        }}>
           <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">
             Cancel
           </button>
