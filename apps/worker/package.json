@@ -1,0 +1,28 @@
+{
+  "name": "@fetch/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@fetch/columns": "workspace:*",
+    "@fetch/core": "workspace:*",
+    "@fetch/db": "workspace:*",
+    "@fetch/personalization": "workspace:*",
+    "@fetch/senders": "workspace:*",
+    "@fetch/validation": "workspace:*",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.3",
+    "pg-boss": "^10.1.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
