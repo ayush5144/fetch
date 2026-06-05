@@ -361,8 +361,24 @@ only; build after sign-off. Every phase ends with
   - Test: importing the same people twice with `none` creates duplicates; with `by columns: [email]` it merges.
 - [x] `ingestLead` takes an explicit policy; `findOrCreateAccount` becomes opt-in (only `by company`)
   - Test: with `none`, no accounts row is created; with `by company`, one row per domain.
-- [ ] Remove Accounts from the headline nav (keep table/API for "companies as a table" later)
-  - Test: the sidebar no longer shows Accounts; existing account data is intact.
+- [x] Dedupe **existing** rows (Clay-style) from a column's `⋯` menu — not only at import
+  - `dedupeExistingRows(tableId, keys, {dryRun?})`: group by trim+lowercase tuple, keep oldest, fill empties only (never clobber), delete dupes, audit; idempotent.
+  - `GET /tables/:id/duplicates?keys=<csv>` (preview) + `POST /tables/:id/dedupe {keys}` (perform).
+  - Frontend: "Dedupe rows by this column" → preview → confirm modal → result pill; import shows a hint, never a forced choice.
+  - Test: 6 core db tests; verified live preview {1,1} → dedupe {merged:1,kept:1} → idempotent 0; keeper data preserved.
+- [x] Remove Accounts from the headline nav (keep table/API for "companies as a table" later)
+  - The sidebar no longer shows Accounts; the `/accounts` route + data are intact.
+
+## Nav + Dogi pages (post-G UX)
+
+- [x] Sidebar restructured: Workspace (Overview, Tables) · **Dogi (Agents, Settings)** · Outreach (Campaigns, Prompts, Reply inbox) · System (Jobs, Analytics); Reply-inbox icon `✉ → @`.
+- [x] **Agents page** (`/agents`): list/delete saved Dogi/plan agents over `agentsApi`, kind pill + config summary + empty state.
+- [x] **Settings page** (`/settings`): read-only key status via new `GET /settings` ({llm, keys:{…13 booleans}}, presence only — never values); grouped LLM/Enrichment/Tools/Send, default model, BYOK/.env note.
+
+## Dogi live-verification + fix (Phase C follow-up)
+
+- [x] Verified Dogi end-to-end against a real OpenAI key through API → pg-boss → worker → Postgres.
+- [x] **Fix:** split the agent system prompt by execution shape — `SYSTEM_RESEARCH` (never-guess, for web/scrape/native) vs `SYSTEM_TRANSFORM` (produce a value, for LLM-only). The single research prompt had made every LLM-only column return `null`/failed. Documented in `devx/dogi-agent.md` §3/§12/§13.
 
 ## Phase H - MCP (Project-Wide, Optional, Off Critical Path)
 
@@ -383,8 +399,8 @@ only; build after sign-off. Every phase ends with
 - [ ] Configure a Dogi (any of 4 providers, search on/off, BYOK or env) that fills a cell with provenance
 - [ ] A Dogi output can create a new column or map to an existing one
 - [ ] "Ask Dogi" plans a multi-column goal, you approve, and it builds + fills the columns in order
-- [ ] Save a Dogi/plan and reuse it; see a cost estimate; test 5 rows before a full run
-- [ ] Dedupe is the operator's choice per table; nothing is force-merged
+- [x] Save a Dogi/plan and reuse it; see a cost estimate; test 5 rows before a full run
+- [x] Dedupe is the operator's choice per table; nothing is force-merged (import-time policy + dedupe-existing from the column menu)
 - [ ] (Optional) An external AI client can drive Fetch over MCP within the gates
 
 ## Guardrails (Part II)
