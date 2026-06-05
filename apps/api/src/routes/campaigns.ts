@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { campaigns, db, leads } from '@fetch/db';
-import { audit, enqueue } from '@fetch/core';
-import { isSendable } from '@fetch/validation';
+import { audit, enqueue, isCampaignEligible } from '@fetch/core';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 
 /**
@@ -73,11 +72,8 @@ campaignsRoutes.post('/:id/launch', async (c) => {
     where: and(eq(leads.campaignId, id), eq(leads.sendStatus, 'none')),
   });
 
-  const eligible = candidates.filter((l) => {
-    if (!isSendable(l.validationStatus as any, rules.allowRisky ?? false)) return false;
-    if ((rules.requireApproved ?? true) && l.approvalStatus !== 'approved') return false;
-    return true;
-  });
+  // The gate, applied through the single shared predicate.
+  const eligible = candidates.filter((l) => isCampaignEligible(l, rules));
 
   if (eligible.length === 0) {
     return c.json({ launched: 0, reason: 'no eligible leads (check validation + approval)' });

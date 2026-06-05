@@ -49,10 +49,10 @@ export default defineWorkspace([
       include: ['{packages,apps}/*/test/**/*.db.test.ts'],
       exclude: ['**/node_modules/**'],
       globalSetup: ['./test/global-setup-db.ts'],
-      // All db tests share ONE Postgres. Run them in a single fork, serially,
-      // so no two files truncate/insert against the database at the same time.
+      // All db tests share ONE Postgres. A single fork runs them serially so no
+      // two files touch the database at once; isolate keeps each file's module
+      // state (and any vi.mock) clean.
       fileParallelism: false,
-      isolate: false,
       poolOptions: { forks: { singleFork: true } },
       sequence: { concurrent: false },
       testTimeout: 20_000,

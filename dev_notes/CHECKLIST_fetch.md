@@ -143,36 +143,36 @@ Operational checklist for phased builds. Keep this file current. Do not mix long
 
 ## Phase 8 - Sending (Instantly Adapter First)
 
-- [ ] Implement the SendAdapter interface
+- [x] Implement the SendAdapter interface
   - Test: a mock adapter satisfies `push` and `parseEvent` and is selectable per campaign.
-- [ ] Implement the Instantly adapter against `POST /api/v2/leads`
+- [x] Implement the Instantly adapter against `POST /api/v2/leads`
   - Test: approved leads map to the correct payload with custom_variables present.
-- [ ] Batch sends into chunks of ≤1000 leads
+- [x] Batch sends into chunks of ≤1000 leads
   - Test: a 2500-lead campaign issues 3 batched requests.
-- [ ] Pass skip-duplicate and verify-on-import flags
+- [x] Pass skip-duplicate and verify-on-import flags
   - Test: a lead already in the workspace is skipped per skip_if_in_workspace.
-- [ ] Persist provider_lead_id and send_status on success
+- [x] Persist provider_lead_id and send_status on success
   - Test: a sent lead stores provider_lead_id and send_status = sent.
-- [ ] Gate sending to approved + valid leads only
+- [x] Gate sending to approved + valid leads only
   - Test: a non-approved or non-valid lead is never sent.
-- [ ] Handle provider errors without losing the batch
+- [x] Handle provider errors without losing the batch
   - Test: a rejected lead is recorded as failed while the rest of the batch proceeds.
 
 ## Phase 9 - Event Feedback (Webhooks)
 
-- [ ] Build webhook endpoints: `POST /webhooks/instantly`, `POST /webhooks/smartlead`
+- [x] Build webhook endpoints: `POST /webhooks/instantly`, `POST /webhooks/smartlead`
   - Test: both endpoints accept a sample payload and return 200 within the provider timeout.
-- [ ] Verify webhook signatures
+- [x] Verify webhook signatures
   - Test: an unsigned or forged payload is rejected with 401/403.
-- [ ] Enforce idempotency via a unique provider_evt key
+- [x] Enforce idempotency via a unique provider_evt key
   - Test: the same event delivered twice creates exactly one events row.
-- [ ] ACK fast, then process asynchronously via an event job
+- [x] ACK fast, then process asynchronously via an event job
   - Test: the endpoint returns 200 immediately under load while processing happens in a worker.
-- [ ] Normalize provider event names to the internal vocabulary
+- [x] Normalize provider event names to the internal vocabulary
   - Test: Instantly and Smartlead names both map to sent/opened/clicked/replied/bounced/unsubscribed.
-- [ ] Match event to local lead by email/provider_lead_id
+- [x] Match event to local lead by email/provider_lead_id
   - Test: a sparse Smartlead payload still resolves to the correct lead.
-- [ ] Update lead timestamps and campaign metrics
+- [x] Update lead timestamps and campaign metrics
   - Test: a reply sets replied_at and increments the campaign reply metric.
 
 ## Phase 10 - Web UI (Table-First Workspace)
