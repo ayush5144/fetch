@@ -7,6 +7,7 @@ import {
   enqueue,
   ingestLead,
   listTablesWithCounts,
+  seedBlankLead,
 } from '@fetch/core';
 import { getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
 import { planGoal, type DogiPlanStep } from '@fetch/agent';
@@ -45,6 +46,10 @@ tablesRoutes.post('/', async (c) => {
   const body = createSchema.parse(await c.req.json());
   const [created] = await db.insert(tables).values(body).returning();
   await audit({ entity: 'table', entityId: created!.id, action: 'create', diff: { name: body.name } });
+  // A fresh table is never a dead end: seed exactly one blank, editable row so
+  // the grid opens on row 1 (G.2a). Idempotent — only seeds when there are no
+  // leads yet, never preset content columns.
+  await seedBlankLead(created!.id, 'user');
   return c.json({ table: created }, 201);
 });
 

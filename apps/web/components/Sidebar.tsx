@@ -37,6 +37,7 @@ const NAV: { group: string; items: { href: string; label: string; ico: string }[
     group: 'System',
     items: [
       { href: '/jobs', label: 'Job monitor', ico: '◷' },
+      { href: '/activity', label: 'Activity', ico: '≡' },
       { href: '/analytics', label: 'Analytics', ico: '▦' },
     ],
   },

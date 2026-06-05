@@ -4,6 +4,7 @@ import { logger as honoLogger } from 'hono/logger';
 import { auth } from './middleware/auth';
 import { rateLimit } from './middleware/rateLimit';
 import { accountsRoutes } from './routes/accounts';
+import { activityRoutes } from './routes/activity';
 import { agentsRoutes } from './routes/agents';
 import { analyticsRoutes } from './routes/analytics';
 import { campaignsRoutes } from './routes/campaigns';
@@ -45,6 +46,7 @@ app.route('/campaigns', campaignsRoutes);
 app.route('/prompts', promptsRoutes);
 app.route('/jobs', jobsRoutes);
 app.route('/analytics', analyticsRoutes);
+app.route('/activity', activityRoutes);
 app.route('/settings', settingsRoutes);
 app.route('/webhooks', webhooksRoutes);
 

@@ -102,6 +102,35 @@ export async function ensureExampleTable(): Promise<string> {
   return EXAMPLE_TABLE_ID;
 }
 
+/**
+ * Seed exactly ONE blank lead into a freshly created table, so the grid opens on
+ * an editable row `1` instead of a "no rows yet" dead end (G.2a).
+ *
+ * Goes through the SAME ingestion path as the grid's "+ new lead" / the example
+ * seed — `ingestLead` with an empty canonical — so the row's defaults match a
+ * hand-added blank row exactly: empty `data`, null email, `validationStatus`
+ * `no_email`, and one audit_log entry. Dedupe is forced `none` so the create
+ * always lands.
+ *
+ * Idempotent by design: only seed when the table has no leads yet, so re-running
+ * setup (or a double create) never stacks blank rows. No content columns are
+ * created — just the one row.
+ */
+export async function seedBlankLead(
+  tableId: string,
+  actor: string = 'user',
+): Promise<{ id: string } | null> {
+  const existing = await db.query.leads.findFirst({ where: eq(leads.tableId, tableId) });
+  if (existing) return null;
+
+  const [source] = await db.insert(sources).values({ type: 'manual', raw: {} }).returning();
+  const { lead } = await ingestLead(
+    { data: {} },
+    { sourceId: source!.id, tableId, actor, dedupe: { mode: 'none' } },
+  );
+  return { id: lead.id };
+}
+
 /** A table with its live row/column counts, for the Overview cards. */
 export interface TableWithCounts extends Table {
   leadCount: number;

@@ -149,6 +149,7 @@ export interface Table {
   leadCount: number;
   columnCount: number;
   createdAt: string;
+  updatedAt?: string;
   settings?: { protected?: boolean };
 }
 
@@ -283,6 +284,32 @@ export interface Settings {
 export const settingsApi = {
   /** Read the server's default model and which integration keys are configured. */
   get: () => api.get<Settings>('/settings'),
+};
+
+// ── Phase G.2c: Activity log (over audit_log) ─────────────────────────────────
+
+/** One row of the workspace-wide activity feed, projected from `audit_log`. */
+export interface AuditRow {
+  id: string;
+  /** Who performed the action — a user, "dogi", "doggo", or "system". */
+  actor: string;
+  /** The entity type touched, e.g. "lead", "column", "table". */
+  entity: string;
+  /** The id of the touched entity. */
+  entityId: string;
+  /** What happened — create / update / delete / send / merge / run … */
+  action: string;
+  /** Optional structured detail (e.g. the field changed, before/after). */
+  diff: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export const activityApi = {
+  /** List workspace activity, newest first. `total` is the full count for paging. */
+  list: (limit = 50, offset = 0) =>
+    api.get<{ activity: AuditRow[]; total: number }>(
+      `/activity?limit=${limit}&offset=${offset}`,
+    ),
 };
 
 // ── Phase E: Cost estimate ────────────────────────────────────────────────────

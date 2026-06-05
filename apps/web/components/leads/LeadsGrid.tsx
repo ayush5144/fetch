@@ -634,6 +634,12 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
 
   const availableColumns = columns.map((c) => ({ key: c.key, label: c.label }));
 
+  // How many cell jobs for this table are in flight (running or queued). Drives
+  // the "Dogi working…" toolbar indicator. Errors aren't "in flight".
+  const inFlightCount = jobs.filter(
+    (j) => j.status === 'running' || j.status === 'queued',
+  ).length;
+
   return (
     <>
       {/* Toolbar */}
@@ -667,6 +673,12 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           </div>
         ) : null}
         <div className="spacer" />
+        {inFlightCount > 0 && (
+          <span className="pill grid-working-pill" style={{ fontSize: 12 }}>
+            <span className="dot" />
+            Dogi working… {inFlightCount} running
+          </span>
+        )}
         {dogiSuccessMsg && (
           <span
             className="pill pill-green"
@@ -1169,7 +1181,8 @@ function GridCell({
     return (
       <td>
         <div className="grid-cell">
-          <span className="grid-cell-queued">⏳ Queued</span>
+          <span className="grid-cell-pulse" aria-hidden />
+          <span className="grid-cell-queued">Queued…</span>
         </div>
       </td>
     );

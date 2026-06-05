@@ -17,6 +17,22 @@ interface Overview {
   leads: { total: number; valid: number; sent: number; replied: number };
 }
 
+/** Compact "updated 3d ago" label; falls back to a date for older rows. */
+function relativeUpdated(iso?: string): string {
+  if (!iso) return '—';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const sec = Math.round((Date.now() - then) / 1000);
+  if (sec < 60) return 'just now';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 export default function OverviewPage() {
   const tables = useApi<{ tables: Table[] }>('/tables', 6000);
   const stats = useApi<Overview>('/analytics/overview', 8000);
@@ -54,66 +70,72 @@ export default function OverviewPage() {
 
         <div>
           <div className="section-title">Tables</div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: 14,
-            }}
-          >
-            {(tables.data?.tables ?? []).map((t) => (
-              <div key={t.id} className="card card-pad" style={{ position: 'relative' }}>
-                <Link href={`/leads?table=${t.id}`} style={{ display: 'block', textDecoration: 'none' }}>
-                  <div className="row" style={{ gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>{t.icon ?? '▦'}</span>
-                    <span className="cell-strong" style={{ fontSize: 15 }}>
-                      {t.name}
-                    </span>
-                    {t.settings?.protected && (
-                      <span className="pill" style={{ fontSize: 10, padding: '1px 7px', marginLeft: 'auto' }} title="Example table — protected">
-                        Example
-                      </span>
-                    )}
-                  </div>
-                  {t.description && (
-                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                      {t.description}
-                    </div>
-                  )}
-                  <div className="row" style={{ gap: 14, marginTop: 12 }}>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      {t.leadCount.toLocaleString()} rows
-                    </span>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      {t.columnCount} columns
-                    </span>
-                  </div>
-                </Link>
-                {/* Table actions — only shown for non-protected tables */}
-                {!t.settings?.protected && (
-                  <button
-                    className="table-card-menu-btn"
-                    title="Table options"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setTableMenu({ table: t, rect });
-                    }}
-                  >
-                    ⋯
-                  </button>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Rows</th>
+                  <th>Columns</th>
+                  <th>Updated</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(tables.data?.tables ?? []).map((t) => (
+                  <tr key={t.id}>
+                    <td>
+                      <Link
+                        href={`/leads?table=${t.id}`}
+                        className="row"
+                        style={{ gap: 8, textDecoration: 'none' }}
+                      >
+                        <span style={{ fontSize: 16 }}>{t.icon ?? '▦'}</span>
+                        <span className="cell-strong">{t.name}</span>
+                        {t.settings?.protected && (
+                          <span
+                            className="pill pill-muted"
+                            style={{ fontSize: 10, padding: '1px 7px' }}
+                            title="Example table — protected"
+                          >
+                            Example
+                          </span>
+                        )}
+                      </Link>
+                    </td>
+                    <td className="muted">{t.leadCount.toLocaleString()}</td>
+                    <td className="muted">{t.columnCount}</td>
+                    <td className="muted">{relativeUpdated(t.updatedAt ?? t.createdAt)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {!t.settings?.protected && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Table options"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setTableMenu({ table: t, rect });
+                          }}
+                        >
+                          ⋯
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {(tables.data?.tables ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={5}>
+                      <div className="empty">
+                        <div className="empty-icon">▦</div>
+                        No tables yet. Create one to start.
+                      </div>
+                    </td>
+                  </tr>
                 )}
-              </div>
-            ))}
-            {(tables.data?.tables ?? []).length === 0 && (
-              <div className="card">
-                <div className="empty">
-                  <div className="empty-icon">▦</div>
-                  No tables yet. Create one to start.
-                </div>
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
