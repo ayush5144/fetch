@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { columns as columnsTable, db, leads, sources, tables } from '@fetch/db';
+import { columns as columnsTable, db, jobs, leads, sources, tables } from '@fetch/db';
 import { audit, enqueue, ingestLead, listTablesWithCounts } from '@fetch/core';
-import { planRun, runFormulaColumn } from '@fetch/columns';
+import { getColumn, planRun, runFormulaColumn } from '@fetch/columns';
 import { CsvNormalizer } from '@fetch/connectors';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 /**
  * /tables — the multi-table surface (Phase A). A workspace holds many tables;
@@ -54,7 +54,8 @@ tablesRoutes.get('/:id/leads', async (c) => {
   const id = c.req.param('id');
   const rows = await db.query.leads.findMany({
     where: eq(leads.tableId, id),
-    orderBy: [desc(leads.createdAt)],
+    // Grid order: explicit position first, created_at as a stable tiebreak.
+    orderBy: [asc(leads.position), asc(leads.createdAt)],
     limit: 1000,
   });
   return c.json({ leads: rows });
@@ -117,7 +118,8 @@ tablesRoutes.get('/:id/columns', async (c) => {
   const id = c.req.param('id');
   const rows = await db.query.columns.findMany({
     where: eq(columnsTable.tableId, id),
-    orderBy: [asc(columnsTable.createdAt)],
+    // Grid order: explicit position first, created_at as a stable tiebreak.
+    orderBy: [asc(columnsTable.position), asc(columnsTable.createdAt)],
   });
   return c.json({ columns: rows });
 });
@@ -142,7 +144,7 @@ tablesRoutes.post('/:id/columns', async (c) => {
       .returning();
     await audit({ entity: 'column', entityId: created!.id, action: 'create', diff: { key: body.key } });
     return c.json({ column: created }, 201);
-  } catch (err) {
+  } catch {
     // The unique (table_id, key)/(table_id, label) indexes enforce no dup names.
     return c.json({ error: 'a column with that name or key already exists in this table' }, 409);
   }
@@ -174,4 +176,117 @@ tablesRoutes.post('/:id/columns/:key/run', async (c) => {
     jobIds.push(await enqueue('enrich', { leadId: lead.id, columnKey: key }, { leadId: lead.id }));
   }
   return c.json({ type: plan.column.type, enqueued: jobIds.length, skipped: plan.skipped }, 202);
+});
+
+// ── Reordering (drag-to-reorder columns & rows) ───────────────────────────────
+
+const reorderSchema = z.object({ order: z.array(z.string()) });
+
+/**
+ * Persist a new column order. `order` is the column ids left→right; each gets a
+ * `position` equal to its index. Only columns that belong to this table are
+ * touched (ids from other tables are ignored). One UPDATE per id, scoped by
+ * table_id so a stray id can never write across tables.
+ */
+tablesRoutes.post('/:id/columns/reorder', async (c) => {
+  const tableId = c.req.param('id');
+  const { order } = reorderSchema.parse(await c.req.json());
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < order.length; i++) {
+      await tx
+        .update(columnsTable)
+        .set({ position: i })
+        .where(and(eq(columnsTable.id, order[i]!), eq(columnsTable.tableId, tableId)));
+    }
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * Persist a new row order. `order` is the lead ids top→bottom; each gets a
+ * `position` equal to its index. Scoped to this table.
+ */
+tablesRoutes.post('/:id/leads/reorder', async (c) => {
+  const tableId = c.req.param('id');
+  const { order } = reorderSchema.parse(await c.req.json());
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < order.length; i++) {
+      await tx
+        .update(leads)
+        .set({ position: i })
+        .where(and(eq(leads.id, order[i]!), eq(leads.tableId, tableId)));
+    }
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * Duplicate a column: copy its type/config/width with a fresh, unique key+label
+ * (appending `_copy`, then `_copy2`, … until free). The copy lands at the end of
+ * the grid (max position + 1). Values already in leads.data aren't copied — a
+ * Dogi/formula copy refills; a manual copy starts blank.
+ */
+tablesRoutes.post('/:id/columns/:key/duplicate', async (c) => {
+  const tableId = c.req.param('id');
+  const key = c.req.param('key');
+
+  const src = await getColumn(tableId, key);
+  if (!src) return c.json({ error: 'unknown column' }, 404);
+
+  const existing = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const usedKeys = new Set(existing.map((x) => x.key));
+  const usedLabels = new Set(existing.map((x) => x.label));
+  const maxPos = existing.reduce((m, x) => Math.max(m, x.position), -1);
+
+  // Find a free `<key>_copy` / `<label> (copy)` pair, bumping a counter on clash.
+  let n = 0;
+  let newKey = `${src.key}_copy`;
+  let newLabel = `${src.label}_copy`;
+  while (usedKeys.has(newKey) || usedLabels.has(newLabel)) {
+    n += 1;
+    newKey = `${src.key}_copy${n}`;
+    newLabel = `${src.label}_copy${n}`;
+  }
+
+  const [created] = await db
+    .insert(columnsTable)
+    .values({
+      tableId,
+      key: newKey,
+      label: newLabel,
+      type: src.type,
+      config: src.config as object,
+      width: src.width,
+      position: maxPos + 1,
+    })
+    .returning();
+  await audit({ entity: 'column', entityId: created!.id, action: 'create', diff: { key: newKey, from: src.key } });
+  return c.json({ column: created }, 201);
+});
+
+// ── Cell jobs (running/queued cell states for the grid) ───────────────────────
+
+/**
+ * Non-terminal enrich jobs for this table, so the grid can paint queued/running
+ * cells. We join jobs → leads by table and read the column key out of the job's
+ * stored payload. Only queued/active (non-terminal) jobs of type `enrich`.
+ */
+tablesRoutes.get('/:id/cell-jobs', async (c) => {
+  const tableId = c.req.param('id');
+  const rows = await db
+    .select({
+      leadId: jobs.leadId,
+      columnKey: sql<string>`${jobs.payload}->>'columnKey'`,
+      status: jobs.status,
+    })
+    .from(jobs)
+    .innerJoin(leads, eq(jobs.leadId, leads.id))
+    .where(
+      and(
+        eq(leads.tableId, tableId),
+        eq(jobs.type, 'enrich'),
+        inArray(jobs.status, ['queued', 'active']),
+      ),
+    );
+  return c.json({ jobs: rows.filter((r) => r.leadId && r.columnKey) });
 });

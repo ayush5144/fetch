@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { accounts } from './accounts';
 import { campaigns } from './campaigns';
 import { createdAt, id, updatedAt } from './_shared';
@@ -68,6 +68,9 @@ export const leads = pgTable(
     // ── User columns ──────────────────────────────────────────────────────────
     /** ALL user-defined columns live here, keyed by columns.key. GIN-indexed. */
     data: jsonb('data').notNull().default({}),
+
+    /** Row order within its table (drag-to-reorder). Lower = higher up. */
+    position: integer('position').notNull().default(0),
 
     createdAt: createdAt(),
     updatedAt: updatedAt(),

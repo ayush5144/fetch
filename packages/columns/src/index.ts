@@ -7,3 +7,4 @@ export * from './cell';
 export * from './formula';
 export * from './resolve';
 export * from './engine';
+export * from './validate';

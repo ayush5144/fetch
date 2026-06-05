@@ -1,4 +1,4 @@
-import { jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createdAt, id, updatedAt } from './_shared';
 import { tables } from './tables';
 
@@ -36,6 +36,10 @@ export const columns = pgTable(
      *  - manual  → { valueType }
      */
     config: jsonb('config').notNull().default({}),
+    /** Left-to-right order in the grid. Lower = further left. */
+    position: integer('position').notNull().default(0),
+    /** Persisted pixel width of the column header (null = grid default). */
+    width: integer('width'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

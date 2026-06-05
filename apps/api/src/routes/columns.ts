@@ -42,16 +42,31 @@ columnsRoutes.post('/', async (c) => {
   return c.json({ column: created }, 201);
 });
 
+// PATCH accepts presentation + identity edits. `key`/`type` aren't editable
+// here (renaming the JSONB key would orphan stored values); the grid edits
+// label/config and persists drag position/width.
+const patchSchema = z.object({
+  label: z.string().min(1).optional(),
+  config: z.record(z.unknown()).optional(),
+  position: z.number().int().optional(),
+  width: z.number().int().nullable().optional(),
+});
+
 columnsRoutes.patch('/:id', async (c) => {
   const id = c.req.param('id');
-  const patch = createSchema.partial().parse(await c.req.json());
-  const [updated] = await db
-    .update(columnsTable)
-    .set(patch)
-    .where(eq(columnsTable.id, id))
-    .returning();
-  if (!updated) return c.json({ error: 'not found' }, 404);
-  return c.json({ column: updated });
+  const patch = patchSchema.parse(await c.req.json());
+  try {
+    const [updated] = await db
+      .update(columnsTable)
+      .set(patch)
+      .where(eq(columnsTable.id, id))
+      .returning();
+    if (!updated) return c.json({ error: 'not found' }, 404);
+    return c.json({ column: updated });
+  } catch {
+    // The unique (table_id, label) index throws on a duplicate name in the table.
+    return c.json({ error: 'a column with that name already exists in this table' }, 409);
+  }
 });
 
 /** Delete a column definition. Existing values stay in leads.data untouched. */

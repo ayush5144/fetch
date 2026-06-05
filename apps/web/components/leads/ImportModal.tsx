@@ -5,12 +5,20 @@ import { Modal } from '@/components/Modal';
 import { api } from '@/lib/api';
 
 /**
- * CSV import. Reads the file in the browser and posts the text to /leads/import,
- * which normalizes + dedupes server-side. We surface the imported/merged counts
- * so the operator sees dedupe working (re-importing the same file merges, never
- * duplicates).
+ * CSV import. Reads the file in the browser and posts the text to the
+ * table-scoped import endpoint. Falls back to the global /leads/import when
+ * no tableId is given (backward compat). We surface imported/merged counts
+ * so the operator sees dedupe working.
  */
-export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+export function ImportModal({
+  onClose,
+  onDone,
+  tableId,
+}: {
+  onClose: () => void;
+  onDone: () => void;
+  tableId?: string;
+}) {
   const [csv, setCsv] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -28,8 +36,9 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
     setBusy(true);
     setErr(null);
     try {
+      const endpoint = tableId ? `/tables/${tableId}/leads/import` : '/leads/import';
       const res = await api.post<{ imported: number; merged: number; total: number }>(
-        '/leads/import',
+        endpoint,
         { csv },
       );
       setResult(res);

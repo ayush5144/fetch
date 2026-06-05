@@ -36,7 +36,7 @@ export interface Lead {
   email: string | null;
   title: string | null;
   enrichmentStatus: string;
-  enrichmentConf: Record<string, { confidence: number; source: string | null }>;
+  enrichmentConf: Record<string, { confidence: number; source: string | null; model?: string | null }>;
   validationStatus: string;
   approvalStatus: string;
   sendStatus: string;
@@ -46,15 +46,43 @@ export interface Lead {
   repliedAt: string | null;
   bouncedAt: string | null;
   data: Record<string, unknown>;
+  /** edit overrides set by user (Clay-style) */
+  editedKeys?: string[];
+  /** display order position */
+  position?: number;
   createdAt: string;
 }
+
+/** Value type for typed column validation */
+export type ValueType = 'text' | 'email' | 'url' | 'number' | 'date' | 'select' | 'checkbox';
+
+/** Fill method determining how cells are populated */
+export type FillMethod = 'manual' | 'dogi' | 'formula';
 
 export interface Column {
   id: string;
   key: string;
   label: string;
-  type: 'enrichment' | 'agent' | 'formula' | 'manual';
-  config: Record<string, unknown>;
+  type: 'enrichment' | 'agent' | 'formula' | 'manual' | 'dogi';
+  config: {
+    valueType?: ValueType;
+    fillMethod?: FillMethod;
+    options?: string[];        // for select type
+    instruction?: string;      // for dogi type
+    reads?: string[];          // for dogi type
+    [key: string]: unknown;
+  };
+  /** display order position */
+  position?: number;
+  /** column width in pixels */
+  width?: number;
+}
+
+export interface CellJob {
+  leadId: string;
+  columnKey: string;
+  status: 'queued' | 'running' | 'error';
+  error?: string | null;
 }
 
 export interface Job {

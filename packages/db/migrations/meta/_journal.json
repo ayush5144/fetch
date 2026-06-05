@@ -15,6 +15,13 @@
       "when": 1780647886686,
       "tag": "0001_minor_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780649003906,
+      "tag": "0002_curved_captain_universe",
+      "breakpoints": true
     }
   ]
 }

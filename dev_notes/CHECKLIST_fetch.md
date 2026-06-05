@@ -266,31 +266,31 @@ only; build after sign-off. Every phase ends with
 
 ## Phase B - The Clay Grid (Leads View)
 
-- [ ] Grid shell: row numbers, selection checkboxes, sticky header, horizontal scroll
+- [x] Grid shell: row numbers, selection checkboxes, sticky header, horizontal scroll
   - Test: a 200-row table renders; selecting rows enables bulk actions.
-- [ ] Permanent trailing `+ Add column` header + inline create popover
+- [x] Permanent trailing `+ Add column` header + inline create popover
   - Test: clicking `+` opens a popover anchored at the new column; creating adds the column inline.
-- [ ] Column types: a friendly picker — value types Text · Email · URL · Number · Date · Select · Checkbox, plus fill methods Dogi (AI) · Formula · Manual
+- [x] Column types: a friendly picker — value types Text · Email · URL · Number · Date · Select · Checkbox, plus fill methods Dogi (AI) · Formula · Manual
   - Test: an Email column rejects a non-email; a Number column stores numbers; each type shows its icon.
-- [ ] Two columns in one table cannot share a name (label) or key
+- [x] Two columns in one table cannot share a name (label) or key
   - Test: creating/renaming to a duplicate name is rejected with a clear message.
-- [ ] Inline edit ANY field: click any row×column cell to edit in place; Enter saves, Esc cancels; type validation applies
+- [x] Inline edit ANY field: click any row×column cell to edit in place; Enter saves, Esc cancels; type validation applies
   - Test: clicking an editable cell edits + persists; editing a computed (Dogi/formula) cell overrides it with an "edited" indicator.
-- [ ] Direct manipulation: drag to resize columns, drag to reorder columns, drag to reorder rows
+- [x] Direct manipulation: drag to resize columns, drag to reorder columns, drag to reorder rows
   - Test: dragging column 3 between 1 and 2 persists the new order; a resize persists width; a row reorder persists.
-- [ ] Column header `⋯` menu: run · edit · rename · duplicate · insert left/right · delete
+- [x] Column header `⋯` menu: run · edit · rename · duplicate · insert left/right · delete
   - Test: each action works; delete removes the column def without corrupting other `data` keys.
-- [ ] Per-column `▷ Run` and per-cell hover `▷ Run`
+- [x] Per-column `▷ Run` and per-cell hover `▷ Run`
   - Test: run-column fans out over visible/selected rows; run-cell enqueues one job.
-- [ ] Cell state machine: empty → queued → running → filled → error (derived from lead + live jobs)
+- [x] Cell state machine: empty → queued → running → filled → error (derived from lead + live jobs)
   - Test: a running cell shows a spinner; completion shows value + confidence + source; failure shows the error + retry.
-- [ ] Inline `+ new lead` row
+- [x] Inline `+ new lead` row
   - Test: adding a row then typing into a cell persists without a job (for manual/typed columns).
-- [ ] Cell side-peek: full value, provenance URL, which Dogi/model, "Re-run"
+- [x] Cell side-peek: full value, provenance URL, which Dogi/model, "Re-run"
   - Test: opening a filled cell shows its source link and lets you re-run.
-- [ ] Live updates (poll) so completed runs/new rows appear without manual refresh
+- [x] Live updates (poll) so completed runs/new rows appear without manual refresh
   - Test: a completed job updates the visible cell automatically.
-- [ ] Clean, non-technical UX: friendly type names, inline help, no jargon in create/select/run flows
+- [x] Clean, non-technical UX: friendly type names, inline help, no jargon in create/select/run flows
   - Test: a first-time user adds a column and edits a cell without reading docs (usability check).
 
 ## Phase C - Dogi (Single Cell) And Providers

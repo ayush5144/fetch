@@ -4,7 +4,7 @@ import { CsvNormalizer, ManualNormalizer, readCsvHeaders } from '@fetch/connecto
 import { enqueue, ingestLead } from '@fetch/core';
 import { DEFAULT_TABLE_ID, db, leads, sources } from '@fetch/db';
 import { desc, eq } from 'drizzle-orm';
-import { getColumn } from '@fetch/columns';
+import { getColumn, validateCellValue, valueTypeOf } from '@fetch/columns';
 
 /**
  * /leads — the table's data API.
@@ -131,14 +131,29 @@ leadsRoutes.post('/import', async (c) => {
 
 const cellEditSchema = z.object({ key: z.string(), value: z.unknown() });
 
-/** Inline-edit a manual cell (no job). Writes straight into leads.data. */
+/**
+ * Inline-edit a cell (no job). Writes straight into leads.data. When the target
+ * column declares a typed value (config.valueType email/number/url/date/…), the
+ * value is validated and lightly coerced first — an invalid value is a 400, a
+ * valid one persists (possibly coerced, e.g. "42" → 42). Editing a computed
+ * cell overrides it (Clay-style), so any field is correctable by hand.
+ */
 leadsRoutes.patch('/:id/cell', async (c) => {
   const id = c.req.param('id');
   const { key, value } = cellEditSchema.parse(await c.req.json());
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
   if (!lead) return c.json({ error: 'not found' }, 404);
 
-  const data = { ...(lead.data as object), [key]: value };
+  // Look up the column by the lead's table + key to learn its value type.
+  let toStore = value;
+  const column = await getColumn(lead.tableId, key);
+  if (column) {
+    const result = validateCellValue(valueTypeOf(column.config), value, column.config);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    toStore = result.value;
+  }
+
+  const data = { ...(lead.data as object), [key]: toStore };
   const [updated] = await db.update(leads).set({ data }).where(eq(leads.id, id)).returning();
   return c.json({ lead: updated });
 });
