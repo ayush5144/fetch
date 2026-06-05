@@ -29,18 +29,18 @@ below before copying literal code.
 
 ---
 
-## 2. Two web-search backends
+## 2. Web/scrape backends
 
-Dogi's `webSearch` field picks how it researches:
+These are the web/scrape **sources** a Dogi can enable (alongside data providers
+and LLM — see [dogi-agent.md §4](./dogi-agent.md)):
 
-| Value | Backend | Keys needed |
+| Backend | What | Keys needed |
 |---|---|---|
-| `off` | none (pure transform) | LLM key only |
 | `native` | the **provider's own** web search | LLM key only |
 | `serper` | **our** Serper (Google) search tool | `SERPER_API_KEY` |
 | `firecrawl` | **our** Firecrawl scrape/extract tool | `FIRECRAWL_API_KEY` |
 
-`native` is the default (zero extra setup). `serper`/`firecrawl` already exist in
+`native` needs zero extra setup. `serper`/`firecrawl` already exist in
 `packages/agent/src/tools/`; we just expose them as a user choice and let advanced
 flows chain them. This gives the user the toggle OpenClay has **plus** the option
 to use our own search budget/tools.

@@ -4,6 +4,11 @@ The leads view should feel like a spreadsheet you **operate**, not a report you
 read. This is the screen we perfect first. Reference: the Clay screenshot
 (`+ Add column` at the right edge, per-cell `Run cell`, status dots, row numbers).
 
+**Design north star: built for non-technical users.** Anyone — not just an
+engineer — should be able to make a table, add a column, edit a cell, and run a
+Dogi without docs. Friendly type names, inline help, no jargon, familiar
+spreadsheet gestures (click-to-edit, drag-to-reorder, drag-to-resize).
+
 ---
 
 ## 1. Anatomy
@@ -31,21 +36,51 @@ Bottom: **`+ new lead`**.
 
 ### Columns
 - **Trailing `+ Add column`** header cell, always present. Click → an **inline
-  popover** anchored where the column will appear, to name it, pick type
-  (**Dogi** / formula / manual / text), and set config. (Not a center modal.)
+  popover** anchored where the column will appear, to name it, pick a **type**
+  (see §2.1), and set config. (Not a center modal.)
+- **Names are unique** within a table — creating/renaming to an existing name is
+  rejected inline with a clear message (no two columns share a name or key).
 - **Header `⋯` menu** per column: Run column · Edit (reopen config) · Rename ·
   Duplicate · Insert left/right · Sort · Filter · **Delete**.
-- **Header `▷ Run`** on enrichable columns: fan out the Dogi over visible/selected
-  rows (respects run-only-if-empty unless "force").
-- Column **type icon** (🔍 Dogi, ƒ formula, ✎ manual, T text) for quick scanning.
-- Drag to reorder / resize (nice-to-have, after the basics).
+- **Header `▷ Run`** on Dogi columns: fan out over visible/selected rows
+  (respects run-only-if-empty unless "force").
+- Column **type icon** for quick scanning.
+- **Drag to resize** a column (persisted width) and **drag to reorder** columns
+  (move column 3 between 1 and 2 — persisted order). This is a **core** table
+  behavior, not a nice-to-have.
+
+#### 2.1 Column types — a friendly picker
+A column has a **value type** and (for filled columns) a **fill method**. The
+create popover shows one simple list; we don't make a new user learn jargon:
+
+| Value type | Holds / validates | Icon |
+|---|---|---|
+| **Text** | any text | T |
+| **Email** | a valid email | ✉ |
+| **URL** | a link | 🔗 |
+| **Number** | numeric, sortable | # |
+| **Date** | a date | 📅 |
+| **Select** | one of a fixed set | ▾ |
+| **Checkbox** | true/false | ☑ |
+
+| Fill method | How the cell fills |
+|---|---|
+| **Manual** | a person types it (typed by the value type above) |
+| **Dogi (AI)** | the agent fills it ([dogi-agent.md](./dogi-agent.md)) |
+| **Formula** | derived from other columns |
+
+Type **validates on edit** (an Email column rejects `not-an-email`; a Number
+column stores numbers). The set is extensible — more value types later.
 
 ### Cells
-- **Empty enrichable cell** → shows **`▷ Run`** on hover ("Run cell").
+- **Empty Dogi cell** → shows **`▷ Run`** on hover ("Run cell").
 - **States**: `empty → queued → running (spinner/%) → filled → error`. Filled
   shows value + **confidence dot** + a **source** link; error shows the reason +
   retry.
-- **Inline edit** for manual/text cells (type to set; Enter to save).
+- **Inline edit ANY field** — click any row×column cell to edit it in place
+  (Enter saves, Esc cancels), with **type validation**. Editing a **computed**
+  cell (Dogi/formula) **overrides** it and marks it "edited" (Clay-style), so a
+  human can always correct a value.
 - Click a filled cell → a **side peek** with the full value, provenance URL,
   which Dogi/model produced it, and "Re-run".
 
@@ -53,6 +88,7 @@ Bottom: **`+ new lead`**.
 - **Select** (checkbox) → bulk actions: run a column over the selection, delete,
   move to another table.
 - **Row number** column on the left.
+- **Drag to reorder rows** (persisted order).
 - **`+ new lead`** at the bottom adds a blank row inline; fill cells directly.
 
 ### Toolbar (top of grid)
@@ -93,10 +129,15 @@ already mirror jobs). The grid **polls** today (4s); fine to start, tighten late
 |---|---|---|
 | `apps/web/app/leads/page.tsx` | basic table, top-bar buttons | rebuild as the grid above |
 | Add-column | `components/leads/AddColumnModal.tsx` (modal) | inline **popover** at the `+` header (can reuse the form) |
-| Cell render | `UserCell` (run / value+conf) | add state machine: queued/running/error + side peek |
-| Column header | plain `<th>` | name + `▷` + `⋯` menu + type icon |
-| Rows | list only | row numbers, checkboxes, inline `+ new lead`, inline edit |
+| Cell render | `UserCell` (run / value+conf) | state machine (queued/running/error) + **inline edit any field** + type validation + side peek |
+| Column header | plain `<th>` | name + `▷` + `⋯` menu + type icon; **drag-reorder + drag-resize** |
+| Column types | 4 fill types | add **value types** (text/email/url/number/date/select/checkbox) + validation; enforce **unique names** |
+| Rows | list only | row numbers, checkboxes, inline `+ new lead`, **drag-reorder rows** |
 | Data source | `GET /leads` (global) | `GET /tables/:id/leads` (per table — see multi-table) |
+
+For drag/resize/reorder we'll likely use a small, headless table/dnd library
+(e.g. TanStack Table + a dnd kit) rather than hand-rolling — keeps it robust and
+accessible. Decide the exact lib at build time.
 
 Keep the design tokens in `apps/web/app/globals.css` (navy ink + coral accent);
 the grid stays on-brand and consistent.

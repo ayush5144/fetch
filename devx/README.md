@@ -26,8 +26,11 @@ fills any cell — using your keys or ours."*
 | [multi-table.md](./multi-table.md) | Many tables per workspace; Overview creates/picks tables. Data model + migration. |
 | [providers-and-keys.md](./providers-and-keys.md) | Four LLM providers, native vs our web search, BYOK + env keys, cost estimate, OpenClay reuse. |
 | [dedupe-and-accounts.md](./dedupe-and-accounts.md) | Make dedupe **optional + user-chosen**; what happens to the Accounts section. |
-| [mcp.md](./mcp.md) | Does Dogi need MCP? No for our own tables (internal tools); yes as an optional external boundary (Fetch-as-server, Dogi-as-client). |
-| [roadmap.md](./roadmap.md) | Phased plan of what we change/build, leads-section first. |
+| [mcp.md](./mcp.md) | **Project-wide** MCP plan — Fetch as an agent-operable product (server) + Dogi using external MCP tools (client). |
+| [roadmap.md](./roadmap.md) | Phased plan (A→H) of what we change/build, leads-section first. |
+
+The **test-driven build checklist** for these phases lives in the main checklist,
+[`../dev_notes/CHECKLIST_fetch.md`](../dev_notes/CHECKLIST_fetch.md) → **Part II**.
 
 ## What we keep (don't rebuild)
 

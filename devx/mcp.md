@@ -1,95 +1,160 @@
-# Does Dogi need an MCP to touch tables?
+# MCP — Fetch as an agent-operable product
 
-**Short answer: No for internal data; yes as an optional external boundary.**
+This is a **project-wide** plan, not a Dogi sub-feature. MCP (Model Context
+Protocol) is how Fetch is **operated by, and connected to, AI agents** — the same
+way Clay ships an "MCP (Beta)". The goal: expose Fetch's whole surface to external
+agents **with the same guarantees the UI has** (provenance, the validation gate,
+cost-before-run, async jobs, audit) — never a thin RPC wrapper that bypasses them.
 
-MCP (Model Context Protocol) is a standard for exposing tools/resources **across
-a boundary** between an LLM client and an external system. Inside our own backend
-there is no boundary to cross — Dogi and the tables live in the same process — so
-MCP there is pure overhead. MCP becomes valuable precisely where Fetch meets the
-*outside*. Three cases:
-
----
-
-## 1. Dogi → our own tables — **no MCP** (direct internal tools)
-
-When Dogi reads a lead's columns, writes a cell, or creates a column, it's
-talking to **our own** Postgres through **our own** code. That should be a
-**direct internal tool layer**, not a protocol hop.
-
-We already have the seam: the agent's `Tool` interface
-(`packages/agent/src/tools/`). Dogi's table access is just more tools in that
-registry, calling the engine/DB directly:
-
-| Internal tool | Backed by |
-|---|---|
-| `read_row(reads)` | the lead row + `data` |
-| `write_cell(key, value, conf, source)` | `columns/cell.ts` `writeCell` |
-| `create_column(key, type, config)` | `columns` CRUD (preview + confirm) |
-| `query_rows(filter)` | `leads` query (for aggregate/lookup Dogis) |
-| `web_search` / `scrape_url` | existing serper / firecrawl tools |
-
-Why direct, not MCP, internally:
-- **Faster** — a function call, not a JSON-RPC round trip.
-- **Type-safe + transactional** — same process, same DB transaction, real types.
-- **Simpler auth** — no second auth/permission surface inside our own worker.
-
-So the core loop (Phase C/D) uses **internal tools**. No MCP required to ship
-Dogi.
+> Status: PLANNING. Off the critical path — we build the grid + Dogi on direct
+> internal calls first, then add MCP as a deliberate capability.
 
 ---
 
-## 2. Fetch **as an MCP server** — yes, optional, high value (outbound)
+## 1. Why MCP for Fetch
 
-This is what Clay's "MCP (Beta)" does: expose your workspace so an **external**
-AI client (Claude Desktop, Cursor, ChatGPT, another agent) can **operate Fetch
-from outside**.
+Fetch is a system of records + operations (tables, leads, columns, runs, sends).
+That is exactly the shape an external agent wants to drive: "make a table, add
+these leads, find their CEOs, write emails, tell me who replied." MCP gives that
+agent a typed, discoverable surface. Two directions:
 
-A `fetch-mcp` server would wrap the API we're already building and expose tools
-like:
-
-```
-list_tables() · create_table(name)
-list_leads(table) · add_lead(table, fields)
-list_columns(table) · create_column(table, dogi_config)
-run_column(table, column, filter) · run_cell(lead, column)
-get_results(table)
-```
-
-- **Why it's valuable:** "drive my GTM from my own AI assistant" — build a table,
-  add leads, fire a Dogi, read results, all from Claude/Cursor without our UI.
-- **Low marginal cost:** it's a thin adapter over the REST API + the same auth
-  (`FETCH_API_TOKEN`). Build it **after** the API/grid stabilize.
-- **Self-host friendly:** ships as an optional process; doesn't touch the baseline.
-
-## 3. Dogi **as an MCP client** — yes, optional, for pluggable tools (inbound)
-
-Let a Dogi use **external** MCP servers the user configures (their CRM, internal
-data lake, a niche search MCP) as **extra tools**, alongside
-`native | serper | firecrawl`.
-
-- Fits the customizability theme: a Dogi's tool list becomes **"native search +
-  our tools + any MCP server you connect."**
-- The user **registers** an MCP endpoint and **toggles which Dogis may use it**
-  (explicit opt-in, like every other Dogi capability).
-- Makes the toolset extensible **without us coding each integration**.
-
----
-
-## 4. Recommendation & sequencing
-
-| Capability | Build when | Why |
+| Direction | Meaning | Priority |
 |---|---|---|
-| **Internal table tools** (Dogi ↔ our DB) | **Phase C/D (now)** | required for the core loop; MCP would only slow it |
-| **Fetch-as-MCP-server** (external clients drive Fetch) | **later, optional** | thin wrapper over the API; great for power users; mirrors Clay |
-| **Dogi-as-MCP-client** (external MCP tools in a Dogi) | **later, optional** | extensible toolset; pairs with advanced/flow mode |
+| **Fetch as MCP server** | External AI clients (Claude Desktop, Cursor, ChatGPT, custom agents) **operate** your Fetch workspace | Primary |
+| **Fetch as MCP client** | Fetch (a Dogi) **consumes** external MCP servers (your CRM, data lake, niche search) as extra tools | Secondary |
 
-So: **don't** put MCP in the critical path. Ship Dogi on direct internal tools.
-Then add MCP **outward** (server) and **inward** (client) as deliberate, optional
-capabilities once the core is solid.
+The internal case — Dogi reading/writing **our own** tables — is **not** MCP. That
+stays a direct in-process tool layer (faster, type-safe, transactional). MCP is
+for the boundary with the outside.
 
-## Security notes (when we do add MCP)
-- The MCP **server** reuses `FETCH_API_TOKEN` auth; never exposes secrets; respects
-  the same rate limits.
-- The MCP **client** only calls servers the user explicitly registered, and only
-  for Dogis they explicitly enabled; tool calls are audited; no key leakage.
-- BYOK keys never flow into an MCP payload.
+---
+
+## 2. Fetch MCP server — the surface
+
+The server mirrors the **same primitives as the UI/REST API**, so there is one
+mental model. Resources are read context; tools are actions.
+
+### 2.1 Resources (read — the model pulls these in)
+
+| Resource | Returns |
+|---|---|
+| `tables` | every table: id, name, row/column counts |
+| `table/{id}/schema` | the table's columns (key, label, type, Dogi config) |
+| `table/{id}/rows` | leads (paginated, filterable), each cell value |
+| `lead/{id}` | one lead's full record **+ per-cell provenance** (confidence, source) |
+| `agents` | saved Dogis / plans (name, config) |
+| `prompts` | versioned templates |
+| `jobs/{id}` | a run's status/progress/error |
+| `analytics/{table}` | funnel + run metrics |
+
+### 2.2 Tools (act — grouped by domain)
+
+| Group | Tools |
+|---|---|
+| **Tables** | `create_table` · `rename_table` · `delete_table` · `list_tables` |
+| **Leads** | `add_leads` · `import_csv` · `update_cell` · `query_rows` · `delete_rows` |
+| **Columns** | `create_column(dogi_config)` · `edit_column` · `delete_column` · `list_columns` |
+| **Dogi / runs** | `run_column` · `run_cell` · `ask_dogi(goal)` → returns a **plan** to approve · `estimate_cost(run)` |
+| **Validation** | `validate(table\|leads)` |
+| **Sending** | `create_campaign` · `launch(campaign)` *(gated)* |
+| **Agents** | `save_agent` · `use_agent` |
+
+Each tool maps to an endpoint/function we are already building:
+
+```
+create_table        → POST /tables
+add_leads/import    → POST /tables/:id/leads · /import
+create_column       → POST /tables/:id/columns      (Dogi config)
+run_column/run_cell → POST /columns/:key/run · /leads/:id/run/:key  → returns job id
+ask_dogi(goal)      → the planner (Phase D) → returns a dogi-plan
+launch              → POST /campaigns/:id/launch     (validation + approval gate)
+```
+
+---
+
+## 3. What makes it *ideal* (the qualities, not the tool list)
+
+The tools are easy; these properties are what make an MCP good for a Clay/Fetch:
+
+1. **Same primitives as UI/REST** — the MCP is an agent-native *view* of the same
+   operations, not a parallel brain. No tool can do something the gate would block.
+2. **Async-native** — enriching 10k rows can't block a tool call. Run tools
+   return a **job id**; the client polls `jobs/{id}` or subscribes to progress.
+3. **Cost + dry-run before expensive/irreversible actions** — `estimate_cost`
+   and a `dryRun` flag on big runs and sends; surface the estimate before firing.
+4. **Human-in-the-loop for risk** — `ask_dogi` returns a **plan to approve** (not
+   auto-build); `launch` honors the validation+approval **gate**; destructive
+   tools require explicit confirmation. The agent proposes; a human/policy commits.
+5. **Provenance in responses** — every enriched value returns `{value,
+   confidence, source}` so the external agent can **trust and cite** it.
+6. **Auth, scoping, least privilege** — token auth (`FETCH_API_TOKEN`), a
+   **read-only vs read-write** mode, per-table/workspace scope, tenant isolation
+   if hosted.
+7. **Idempotent + stable ids** — retries are safe (our jobs already are); tools
+   return durable ids so a re-call doesn't double-send or double-charge.
+8. **Pagination + server-side filtering** — tables get huge; cursor pagination,
+   not "dump everything."
+9. **Live updates** — subscribe to job completion / row changes (MCP resource
+   updates) so the client stays current instead of blind-polling.
+10. **BYOK passthrough clarity** — when an external agent triggers enrichment, be
+    explicit about *whose key pays* (server env key vs a caller-supplied key);
+    BYOK keys are never persisted or logged.
+11. **Audit** — every MCP action is recorded with `actor = <that client>`.
+12. **Schema fidelity** — expose column types + Dogi configs so the agent
+    *understands* the table it's operating, not just opaque cells.
+
+---
+
+## 4. Transport, auth, and shape
+
+- **Transports:** `stdio` (local clients like Claude Desktop/Cursor) and
+  **streamable HTTP** (remote/hosted). Same tool/resource definitions behind both.
+- **Auth:** reuse `FETCH_API_TOKEN`. A token can be minted **read-only** or
+  **read-write**, and optionally **scoped to specific tables**.
+- **Packaging:** a separate optional process/app (`apps/mcp` or
+  `packages/mcp-server`) that calls the same API/engine. Ships in the self-host
+  compose as an opt-in service; **not** in the baseline.
+- **Discoverability:** clear tool names, descriptions, and JSON-Schema inputs;
+  resource templates; actionable error messages (an agent reads these).
+
+---
+
+## 5. Fetch as an MCP **client** (Dogi's external tools)
+
+The inbound direction makes a Dogi's toolset extensible without us coding each
+integration:
+
+- A user **registers** an external MCP server (endpoint + auth) in settings.
+- A Dogi can be configured to use it: its tool list becomes **`native search +
+  our tools (serper/firecrawl) + any enabled MCP server`**.
+- **Opt-in per Dogi** — like every Dogi capability, the user toggles which MCP
+  tools a given agent may call.
+- Tool calls are **audited**; BYOK/keys never leak into MCP payloads.
+
+This pairs naturally with advanced/flow mode (an MCP tool is just another node).
+
+---
+
+## 6. Security rules (non-negotiable)
+
+- The MCP **server** enforces the same gates as the API: validation gates sending;
+  rate limits apply; no secrets ever returned to a client.
+- **Read-only tokens** cannot mutate; **scoped tokens** cannot touch other tables.
+- The MCP **client** only calls servers the user explicitly registered, only for
+  Dogis explicitly enabled, and never forwards Fetch secrets or BYOK keys.
+- Every MCP action lands in `audit_log` with the client as actor.
+
+---
+
+## 7. Sequencing & open questions
+
+**Sequencing:** internal Dogi tools (Phase C/D) → grid/Dogi solid → **then** the
+MCP server (read-only first, then write tools) → **then** the MCP client. See the
+checklist Phase H.
+
+**Open questions to resolve before building MCP:**
+- Read-only vs read-write default for a fresh token?
+- For `ask_dogi` over MCP, does approval happen in the Fetch UI, or can a trusted
+  client auto-approve under a policy/budget?
+- BYOK over MCP: do we accept a caller-supplied key per call, or only server keys?
+- Hosted multi-tenant scoping model (deferred while self-host-first)?

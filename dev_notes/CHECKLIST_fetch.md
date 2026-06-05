@@ -236,3 +236,162 @@ Operational checklist for phased builds. Keep this file current. Do not mix long
 - [x] The whole loop is operable from the UI
 - [x] A second provider (Smartlead) works with no core changes
 - [x] A stranger can self-host from the README
+
+---
+
+# Part II — Clay-style workspace + Dogi (next direction)
+
+Builds on Phases 0–12 above; the existing backend (jobs, validation, sending,
+events, self-host) stays green throughout. Design docs live in `../devx/`.
+Each item has a **Test:** that defines done. Status: **not started** — planning
+only; build after sign-off. Every phase ends with
+`pnpm typecheck && pnpm lint && pnpm test` green.
+
+## Phase A - Multi-Table Foundation
+
+- [ ] Add `tables` table (id, name, description?, icon?, timestamps)
+  - Test: a migration creates `tables`; `npm run migrate` is idempotent.
+- [ ] Add `table_id` FK to `leads` and `columns`; backfill existing rows into one default "Leads" table; set NOT NULL
+  - Test: every existing lead/column has a `table_id`; the default table holds them all.
+- [ ] Make `columns.key` unique per `(table_id, key)` instead of global
+  - Test: two tables can each have a column keyed `company`; a dup within one table is rejected.
+- [ ] Tables CRUD API: `GET/POST/PATCH/DELETE /tables`
+  - Test: create→list→rename→delete round-trips; deleting a table cascades its leads/columns.
+- [ ] Scope leads/columns endpoints by table (`GET /tables/:id/leads`, `/columns`)
+  - Test: leads/columns return only the requested table's rows.
+- [ ] Overview lists tables (with counts) and creates a table + a lead
+  - Test: creating a table in the UI shows it in Overview; "New lead" lands in the chosen table.
+- [ ] Job/event/audit references still resolve (they key on `lead_id`)
+  - Test: a run on a lead in a non-default table still produces jobs/provenance.
+
+## Phase B - The Clay Grid (Leads View)
+
+- [ ] Grid shell: row numbers, selection checkboxes, sticky header, horizontal scroll
+  - Test: a 200-row table renders; selecting rows enables bulk actions.
+- [ ] Permanent trailing `+ Add column` header + inline create popover
+  - Test: clicking `+` opens a popover anchored at the new column; creating adds the column inline.
+- [ ] Column types: a friendly picker — value types Text · Email · URL · Number · Date · Select · Checkbox, plus fill methods Dogi (AI) · Formula · Manual
+  - Test: an Email column rejects a non-email; a Number column stores numbers; each type shows its icon.
+- [ ] Two columns in one table cannot share a name (label) or key
+  - Test: creating/renaming to a duplicate name is rejected with a clear message.
+- [ ] Inline edit ANY field: click any row×column cell to edit in place; Enter saves, Esc cancels; type validation applies
+  - Test: clicking an editable cell edits + persists; editing a computed (Dogi/formula) cell overrides it with an "edited" indicator.
+- [ ] Direct manipulation: drag to resize columns, drag to reorder columns, drag to reorder rows
+  - Test: dragging column 3 between 1 and 2 persists the new order; a resize persists width; a row reorder persists.
+- [ ] Column header `⋯` menu: run · edit · rename · duplicate · insert left/right · delete
+  - Test: each action works; delete removes the column def without corrupting other `data` keys.
+- [ ] Per-column `▷ Run` and per-cell hover `▷ Run`
+  - Test: run-column fans out over visible/selected rows; run-cell enqueues one job.
+- [ ] Cell state machine: empty → queued → running → filled → error (derived from lead + live jobs)
+  - Test: a running cell shows a spinner; completion shows value + confidence + source; failure shows the error + retry.
+- [ ] Inline `+ new lead` row
+  - Test: adding a row then typing into a cell persists without a job (for manual/typed columns).
+- [ ] Cell side-peek: full value, provenance URL, which Dogi/model, "Re-run"
+  - Test: opening a filled cell shows its source link and lets you re-run.
+- [ ] Live updates (poll) so completed runs/new rows appear without manual refresh
+  - Test: a completed job updates the visible cell automatically.
+- [ ] Clean, non-technical UX: friendly type names, inline help, no jargon in create/select/run flows
+  - Test: a first-time user adds a column and edits a cell without reading docs (usability check).
+
+## Phase C - Dogi (Single Cell) And Providers
+
+- [ ] Unify `enrichment` + `agent` column types into a single `dogi` type (keep `formula`, `manual`, and the new value types)
+  - Test: an existing enrichment column migrates to `dogi` with equivalent behavior.
+- [ ] Dogi config form: `instruction`, `reads`, `output`, `sources`, `policy`, `brain` (brain optional)
+  - Test: the form persists a valid `dogi` config and reloads it for editing.
+- [ ] Output mapping: `create` new column (preview + confirm + audit) or `map` to existing
+  - Test: "create" adds a new column before first run and audits it; "map" writes into the chosen existing key.
+- [ ] Sources are optional + selectable: data provider · web search · scrape · LLM (each toggleable anytime)
+  - Test: a providers-only Dogi makes **no** LLM call; an LLM+web Dogi makes no provider call.
+- [ ] Data-provider integration — **one provider at a time for now** (Apollo / ZoomInfo / RocketReach), ranked multi-source later
+  - Test: selecting Apollo runs only Apollo; switching to ZoomInfo runs only ZoomInfo.
+- [ ] Combine `policy`: **combine** (default — use all enabled sources) or **first** (stop at first confident hit)
+  - Test: `first` stops once a confident value is found (later sources not called); `combine` runs all enabled sources.
+- [ ] LLM layer: add Gemini and Grok clients beside Anthropic/OpenAI behind `LLMClient`
+  - Test: each provider returns a structured result from a mocked HTTP response.
+- [ ] Native web search path per provider (Anthropic `web_search`, Gemini `googleSearch`, OpenAI/Grok `web_search`)
+  - Test: with web source `native`, the provider request includes its search tool; without it, it does not.
+- [ ] Web/scrape backends: `native` | `serper` (search) and `firecrawl` (scrape) selectable
+  - Test: `serper`/`firecrawl` route through our existing tools.
+- [ ] BYOK + env key resolution per run (`keySource: env | byok`)
+  - Test: a BYOK key is used for the run and never written to DB/logs; env key is used when `keySource=env`.
+- [ ] Execution: transform (no tools) vs research loop (tools), bounded by `maxSteps`
+  - Test: a transform Dogi makes one call; a research Dogi loops and stops at the step ceiling.
+- [ ] Structured output + provenance written via existing `writeCell`
+  - Test: a Dogi cell stores value + `{confidence, source, provider}`; the grid renders both.
+
+## Phase D - Goal Mode (Dogi Plans + Builds Columns)
+
+- [ ] "Ask Dogi" entry point on a table (a goal text box)
+  - Test: submitting a goal returns a structured plan, not prose.
+- [ ] Planner (LLM) emits a `dogi-plan`: ordered steps with `reads/output/sources` + `dependsOn`
+  - Test: "find CEO email then write a custom email" yields 2 steps where step 2 depends on step 1's output column.
+- [ ] Plan review/approve UI: rename columns, switch output to map-existing, toggle search, change model, drop a step
+  - Test: edits to the plan are reflected before anything is created.
+- [ ] On approve, create the columns from the plan (preview already shown), audited
+  - Test: approving creates exactly the planned columns in the table.
+- [ ] Run steps in dependency order (a step runs only once its input columns are filled), reusing fan-out + run-only-if-empty
+  - Test: step 2 cells fill only after step 1 cells are populated; re-running skips filled cells.
+- [ ] Partial-failure handling: a failed step surfaces per-row without blocking independent rows
+  - Test: one row failing step 1 doesn't stop other rows from completing step 2.
+
+## Phase E - Saved Agents, Cost, Test-5
+
+- [ ] `agents` table: save / name / reuse a Dogi or a whole goal-plan
+  - Test: saving a Dogi then "use a saved agent" pre-fills its config on a new column.
+- [ ] Cost estimate before a run (pricing table + token counting, incl. web-search cost)
+  - Test: estimated cost for N rows is shown before firing and is within a sane range of actuals.
+- [ ] Test 5 rows before a full-table run
+  - Test: "Test" runs a 5-row sample; "Run all" only enabled after a test (configurable).
+- [ ] Pricing table covers all four providers + their web-search add-on
+  - Test: each provider/model has input/output per-1M and search-per-1k entries.
+
+## Phase F - Dogi Advanced (Visual Flow) — Stretch
+
+- [ ] Flow data model (`config.flow`: nodes + edges) that compiles to the same plan
+  - Test: a flow and an equivalent simple plan produce identical runs.
+- [ ] Canvas UI + node palette: input · web search · scrape · LLM step · formula · branch · output(create/map)
+  - Test: wiring nodes maps inputs→steps→outputs; invalid graphs are rejected with a clear message.
+- [ ] Flow executor runs the graph (respecting branches and dependencies)
+  - Test: an if/else branch routes to the right output; a multi-step flow fills its terminal column.
+
+## Phase G - Optional Dedupe + Accounts Fold
+
+- [ ] Per-table dedupe policy: `none` (default) | `by columns` | `by company`
+  - Test: importing the same people twice with `none` creates duplicates; with `by columns: [email]` it merges.
+- [ ] `ingestLead` takes an explicit policy; `findOrCreateAccount` becomes opt-in (only `by company`)
+  - Test: with `none`, no accounts row is created; with `by company`, one row per domain.
+- [ ] Remove Accounts from the headline nav (keep table/API for "companies as a table" later)
+  - Test: the sidebar no longer shows Accounts; existing account data is intact.
+
+## Phase H - MCP (Project-Wide, Optional, Off Critical Path)
+
+- [ ] Fetch MCP server (read-only first): expose `tables`, `schema`, `rows`, `lead`, `jobs` resources
+  - Test: a local MCP client lists tables and reads a lead's record with provenance.
+- [ ] MCP write tools: create_table/column, add_leads, run_column/run_cell, ask_dogi
+  - Test: run tools return a job id; the client polls `jobs/{id}` to completion (async-native).
+- [ ] Cost/dry-run + gate: `estimate_cost`, a `dryRun` flag, and `launch` honoring validation+approval
+  - Test: a non-eligible lead is never sent via MCP; a dry-run reports cost without firing.
+- [ ] Auth + scoping: reuse `FETCH_API_TOKEN`; read-only vs read-write; per-table scope; audit every action
+  - Test: a read-only token cannot mutate; a scoped token cannot touch another table; actions appear in `audit_log`.
+- [ ] Fetch as MCP client: register an external MCP server; enable it per Dogi as an extra tool
+  - Test: a Dogi with an enabled MCP tool can call it; disabled Dogis cannot; calls are audited.
+
+## Ship Gate (Clay/Dogi direction)
+
+- [ ] Create a table, add leads, and operate it like a spreadsheet (inline +column, edit any field, drag/resize/reorder, add row)
+- [ ] Configure a Dogi (any of 4 providers, search on/off, BYOK or env) that fills a cell with provenance
+- [ ] A Dogi output can create a new column or map to an existing one
+- [ ] "Ask Dogi" plans a multi-column goal, you approve, and it builds + fills the columns in order
+- [ ] Save a Dogi/plan and reuse it; see a cost estimate; test 5 rows before a full run
+- [ ] Dedupe is the operator's choice per table; nothing is force-merged
+- [ ] (Optional) An external AI client can drive Fetch over MCP within the gates
+
+## Guardrails (Part II)
+
+- Postgres is the single source of truth; the API enqueues, workers do slow work.
+- Enrich in place; every Dogi cell carries value + confidence + source.
+- Validation gates sending; approval gates sending; column creation is previewed/audited.
+- No secrets in code or logs; BYOK keys never persisted; webhooks signed; public endpoints rate-limited.
+- Two columns in a table never share a name; column value types are validated on edit.
+- `pnpm typecheck && pnpm lint && pnpm test` stay green per phase.

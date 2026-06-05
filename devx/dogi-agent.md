@@ -24,6 +24,10 @@ Two altitudes:
 Same engine underneath; the planner just emits multiple cell-Dogis and the
 columns to hold their outputs.
 
+**Enrichment is what Dogi does.** The old `enrichment` and `agent` column types
+merge into one `dogi` type — *enriching a cell* = sending Dogi to fetch its
+value. (`formula` and `manual` stay separate; they don't fetch.)
+
 ---
 
 ## 2. Anatomy (the simple cell config)
@@ -35,16 +39,18 @@ The default config is **deliberately tiny** — five things:
 | `instruction` | Plain-language task | "Find this company's CEO's email" |
 | `reads` | Input columns Dogi can see | `["company", "domain"]` |
 | `output` | Where the value goes (create or map — see §5) | new column `ceo_email` |
-| `webSearch` | `off` \| `native` \| `serper` \| `firecrawl` | `native` |
-| `brain` | `{ provider, model }` (+ optional BYOK key ref) | `{ anthropic, claude-opus-4-8 }` |
+| `sources` | Where Dogi may look — any of: data provider · web search · scrape · LLM. **All optional** (see §4) | `[web search, llm]` |
+| `policy` | How enabled sources combine: **combine** (default) or **stop at first** (see §4) | `combine` |
+| `brain` | The LLM (provider/model + key). **Optional** — a providers-only Dogi needs none | `{ anthropic, claude-opus-4-8 }` |
 
 ```
 ┌──────────────────────────── Dogi (a column) ───────────────────────────┐
 │  instruction:  "Find the CEO's email"                                   │
 │  reads:        company, domain                                          │
 │  output:       ◉ new column "ceo_email"   ○ map to existing ▼          │
-│  web search:   ◉ native  ○ off  ○ serper  ○ firecrawl                    │
-│  brain:        Anthropic · claude-opus-4-8        key: env ▼            │
+│  sources:      ☑ data provider  ☑ web search  ☐ scrape  ☑ LLM           │
+│  combine:      ◉ use all & combine   ○ stop at first answer             │
+│  brain:        Anthropic · claude-opus-4-8   key: env ▼   (if LLM used) │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -54,12 +60,12 @@ The default config is **deliberately tiny** — five things:
 
 Two execution shapes, chosen automatically by whether tools are on:
 
-### a) Transform (web search **off**) — one call, no tools
+### a) Transform (LLM only, no external sources) — one call
 Pure LLM over the `reads` columns. Covers the **"aggregate/summarize two
 columns"** case and the **"write an email from found fields"** case. Fast, cheap,
 no network.
 
-### b) Research loop (web search **on**) — tool-calling
+### b) Research loop (sources on) — tool-calling
 The model proposes a search/scrape, we run it, feed results back, loop until a
 confident value or the **step ceiling**. This is our existing `packages/agent`
 loop, generalized.
@@ -68,7 +74,7 @@ loop, generalized.
 reads + instruction
         │
         ▼
-   ┌──────────── if webSearch != off ──────────┐
+   ┌────────── if a web/scrape source is on ────┐
    │  LLM ──► [ search ] / [ scrape ] ──► back  │ (loop ≤ maxSteps)
    └────────────────────────────────────────────┘
         │
@@ -82,17 +88,35 @@ value + confidence dot + source link.
 
 ---
 
-## 4. Web search — two backends, user's choice
+## 4. Sources — where Dogi may look (all optional, fully configurable)
 
-| `webSearch` | What runs | Needs |
+A Dogi can use any mix of these, and the user can turn each on/off anytime:
+
+| Source | What it is | Needs LLM? |
 |---|---|---|
-| `off` | No tools — pure transform | LLM key |
-| `native` | The **provider's own** web search tool | LLM key |
-| `serper` | **Our** Serper (Google) search | `SERPER_API_KEY` |
-| `firecrawl` | **Our** Firecrawl scrape/extract | `FIRECRAWL_API_KEY` |
+| **Data provider** | a structured lookup (Apollo / ZoomInfo / RocketReach…) | No |
+| **Web search** | two options — **native** (the LLM provider's own web search) or **external** (our search, e.g. Serper) | Yes |
+| **Scrape** | our `firecrawl` — read a specific page | Yes |
+| **LLM** | reason / transform / extract | (is the LLM) |
 
-`native` is the default (no extra keys). See
-[providers-and-keys.md](./providers-and-keys.md).
+So the same Dogi covers every persona: **providers only** (no LLM at all),
+**LLM + web search only**, or **everything layered** — your choice.
+
+**How enabled sources combine** — one setting:
+- **Combine (default)** — use *all* the enabled sources and merge what they
+  return (richest data; pays for each). This is the default.
+- **Stop at first answer** — try sources in order and **stop** the moment one
+  returns a confident value (cheapest; skips the rest). "Confident" = the value's
+  confidence is high enough to trust; a shaky guess moves to the next source.
+
+It's a per-Dogi toggle either way — nothing is forced.
+
+> **Data providers — now vs later.** For now a Dogi uses **one data provider at
+> a time** (e.g. Apollo *or* ZoomInfo *or* RocketReach). Later we'll allow
+> **multiple, ranked** into a waterfall the user orders, e.g.
+> `1. Apollo → 2. ZoomInfo → 3. RocketReach → 4. LLM → 5. web search`.
+
+Web-search / scrape keys: see [providers-and-keys.md](./providers-and-keys.md).
 
 ---
 
@@ -141,10 +165,10 @@ Goal: "find CEO email, then write a custom email"
 How it works:
 - A **"Ask Dogi"** entry point above the table takes the goal.
 - Dogi returns a **plan**: an ordered list of cell-Dogis, each with its
-  `instruction / reads / output / webSearch`, and **dependencies** (step 2 reads
+  `instruction / reads / output / sources`, and **dependencies** (step 2 reads
   step 1's output column).
 - You **review** the plan — rename columns, switch any output to *map-to-existing*,
-  toggle web search, change the model, or drop a step.
+  toggle sources, change the model, or drop a step.
 - On approve, Dogi **creates the columns** and runs them in dependency order
   (a column only runs once its inputs are filled).
 
@@ -217,8 +241,15 @@ an ordered list of these plus deps.
   "instruction": "Find the CEO's email for this company.",
   "reads": ["company", "domain"],
   "output": { "mode": "create", "key": "ceo_email", "label": "CEO email" },
-  "webSearch": "native",            // off | native | serper | firecrawl
+  "sources": [                       // all optional; ordered; one data provider for now
+    { "type": "provider", "name": "apollo" },
+    { "type": "web", "via": "native" },   // native | external  (external = our Serper)
+    { "type": "scrape", "via": "firecrawl" },
+    { "type": "llm" }
+  ],
+  "policy": "combine",               // combine (default) | first   ("stop at first answer")
   "brain": { "provider": "anthropic", "model": "claude-opus-4-8", "keySource": "env" },
+                                     // brain optional — omit for a providers-only Dogi
   "maxSteps": 6
 }
 
@@ -229,11 +260,12 @@ an ordered list of these plus deps.
   "steps": [
     { "id": "s1", "instruction": "Find the CEO's email.",
       "reads": ["company","domain"], "output": { "mode": "create", "key": "ceo_email" },
-      "webSearch": "native", "dependsOn": [] },
+      "sources": [{ "type": "provider", "name": "apollo" }, { "type": "web", "via": "native" }],
+      "policy": "combine", "dependsOn": [] },
     { "id": "s2", "instruction": "Write a short custom cold email to the CEO.",
       "reads": ["ceo_email","company","first_name"],
       "output": { "mode": "create", "key": "custom_email" },
-      "webSearch": "off", "dependsOn": ["s1"] }
+      "sources": [{ "type": "llm" }], "dependsOn": ["s1"] }
   ],
   "flow": null                       // null = linear plan; object = advanced graph
 }
@@ -247,9 +279,9 @@ We **extend**, not rewrite:
 
 | Need | Today | Change |
 |---|---|---|
-| The loop | `packages/agent/src/loop.ts` | accept `reads/output/webSearch/brain`; transform vs loop |
-| Tools | `packages/agent/src/tools/` | add **native** web search per provider; keep serper/firecrawl as options |
-| LLM client | `packages/llm` (anthropic, openai) | add **gemini, grok**; `webSearch` capability; **BYOK** key arg |
+| The loop | `packages/agent/src/loop.ts` | accept `reads/output/sources/policy/brain`; transform vs loop |
+| Sources | `packages/agent/src/tools/` (serper, firecrawl) | add **data providers** (one at a time now) + **native** web search; all optional |
+| LLM client | `packages/llm` (anthropic, openai) | add **gemini, grok**; native-search capability; **BYOK** key arg |
 | Column types | `packages/columns` (4 types) | unify enrichment+agent → **`dogi`**; keep formula/manual |
 | **Create columns** | columns CRUD exists (`POST /columns`) | let a Dogi run **create a column** (preview+confirm, audit) |
 | **Goal plan** | — | a **planner** (LLM) that emits the `dogi-plan`; run steps in dep order |
@@ -258,20 +290,20 @@ We **extend**, not rewrite:
 | Provenance | `columns/cell.ts` | unchanged — value + confidence + source |
 
 Orchestration (jobs, run-only-if-empty, provenance) is already right. Dogi adds a
-**config + provider + web-search + column-creation + planner** layer on top.
+**configurable sources + column-creation + planner** layer on top.
 
 ---
 
 ## 11. Worked examples
 
-1. **Find CEO email** — cell Dogi, `output: create ceo_email`, `webSearch:
-   native`. → research loop, email + source + confidence.
-2. **Summarize two columns (aggregate)** — cell Dogi, reads `[funding, hiring]`,
-   `output: create signal_summary`, `webSearch: off`. → one transform call, cheap.
-3. **Find CEO email → write a custom email (goal mode)** — Ask Dogi the goal; it
-   plans two columns (`ceo_email` web-on, then `custom_email` web-off reading
-   `ceo_email`), you approve, it creates + runs them in order.
-4. **Map to existing** — same as #3 but step 2's output is **mapped** to your
+1. **Find CEO email (providers only)** — `sources: [provider apollo]`, no brain.
+   → structured lookup, no LLM call, email + source + confidence.
+2. **Find CEO email (layered)** — `sources: [provider apollo, web native, llm]`,
+   `policy: combine`. → providers + web + LLM all enrich it.
+3. **Summarize two columns (aggregate)** — reads `[funding, hiring]`,
+   `output: create signal_summary`, `sources: [llm]`. → one transform call, cheap.
+4. **Find CEO email → write a custom email (goal mode)** — Ask Dogi the goal; it
+   plans two columns (`ceo_email` then `custom_email` reading `ceo_email`), you
+   approve, it creates + runs them in order.
+5. **Map to existing** — same as #4 but step 2's output is **mapped** to your
    existing `outreach_email` column instead of creating a new one.
-5. **ICP score** — cell Dogi, reads `[company_size, industry, signal_summary]`,
-   `output: create icp_score`, `webSearch: off`, "score 0–100 fit for our ICP".
