@@ -6,4 +6,5 @@
 export * from './loop';
 export * from './dogi';
 export * from './planner';
+export * from './sourceRows';
 export * from './tools';

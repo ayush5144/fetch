@@ -359,6 +359,105 @@ export async function ingestLead(
   return { lead: created!, created: true };
 }
 
+/**
+ * Map one row-sourcing object (e.g. `{ company: "Apple" }`) to a CanonicalLead.
+ * A recognized primary field (company / name / email) lands on its canonical
+ * system slot so the table's dedupe policy and downstream stages see it; every
+ * other key is preserved verbatim in `data` so Dogi columns can read it.
+ */
+function sourcedRowToCanonical(row: Record<string, unknown>): CanonicalLead {
+  const data: Record<string, unknown> = { ...row };
+  const canonical: CanonicalLead = {};
+
+  const take = (...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = row[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    return undefined;
+  };
+
+  const company = take('company', 'company_name', 'organization');
+  if (company) {
+    canonical.company = { name: company };
+    delete data.company;
+    delete data.company_name;
+    delete data.organization;
+    // Keep the canonical name addressable by Dogi columns that read `company`.
+    data.company = company;
+  }
+
+  const email = take('email');
+  if (email) {
+    canonical.email = email;
+    delete data.email;
+  }
+
+  // A "name" maps to first/last so person-style lists become real leads.
+  const name = take('name', 'full_name', 'person');
+  if (name) {
+    const [first, ...rest] = name.split(/\s+/);
+    canonical.firstName = first ?? null;
+    canonical.lastName = rest.length ? rest.join(' ') : null;
+    delete data.name;
+    delete data.full_name;
+    delete data.person;
+    data.name = name;
+  }
+
+  canonical.data = data;
+  return canonical;
+}
+
+/** How many rows a sourcing insert created vs merged into existing leads. */
+export interface SourcedRowsResult {
+  created: number;
+  merged: number;
+}
+
+/**
+ * Insert a batch of row-sourcing objects (from `sourceRows`) as leads in a
+ * table, REUSING `ingestLead` so the table's dedupe policy applies — re-running
+ * "top 10 companies" must NOT duplicate. Each insert is audited by `ingestLead`.
+ * Newly created leads are appended after the current max position so they land
+ * at the end of the grid. A bad row never sinks the batch.
+ */
+export async function insertSourcedRows(
+  rows: Array<Record<string, unknown>>,
+  ctx: { tableId: string; sourceId: string; actor?: string; dedupe?: DedupePolicy },
+): Promise<SourcedRowsResult> {
+  let created = 0;
+  let merged = 0;
+
+  // Start appending past the current max position so sourced rows trail the grid.
+  const [posRow] = await db
+    .select({ maxPos: sql<number>`coalesce(max(${leads.position}), -1)::int` })
+    .from(leads)
+    .where(eq(leads.tableId, ctx.tableId));
+  let nextPos = (posRow?.maxPos ?? -1) + 1;
+
+  for (const row of rows) {
+    try {
+      const canonical = sourcedRowToCanonical(row);
+      const { lead, created: isNew } = await ingestLead(canonical, {
+        sourceId: ctx.sourceId,
+        tableId: ctx.tableId,
+        actor: ctx.actor,
+        dedupe: ctx.dedupe,
+      });
+      if (isNew) {
+        await db.update(leads).set({ position: nextPos++ }).where(eq(leads.id, lead.id));
+        created++;
+      } else {
+        merged++;
+      }
+    } catch {
+      continue; // one malformed row never sinks the batch
+    }
+  }
+  return { created, merged };
+}
+
 /** Count leads at a domain — used by the account view and dedupe assertions. */
 export async function leadCountForAccount(accountId: string): Promise<number> {
   const [row] = await db

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const { getLLM } = vi.hoisted(() => ({ getLLM: vi.fn() }));
 vi.mock('@fetch/llm', () => ({ getLLM }));
 
-import { planGoal } from '../src/planner';
+import { planDoggo, planGoal, isSourceRowsStep, type SourceRowsStep, type ColumnStep } from '../src/planner';
 
 /**
  * Phase D — the goal-mode planner. Pure unit tests with a mocked LLM: proves a
@@ -95,5 +95,107 @@ describe('planGoal', () => {
     );
     const plan = await planGoal('g');
     expect(plan!.steps.map((s) => s.output.key)).toEqual(['ceo_email', 'ceo_email_2']);
+  });
+});
+
+describe('planDoggo (row-sourcing)', () => {
+  it('emits a leading source-rows step then column steps with correct deps (top N, empty table)', async () => {
+    getLLM.mockReturnValue(
+      fakeLLM({
+        steps: [
+          {
+            kind: 'source-rows',
+            description: 'the top 10 EV companies',
+            count: 10,
+            primaryField: 'company',
+            primaryLabel: 'Company',
+          },
+          {
+            kind: 'column',
+            id: 's1',
+            label: 'CEO',
+            instruction: "Find the company's CEO.",
+            reads: ['company'],
+            output: { mode: 'create', key: 'ceo' },
+            sources: [{ type: 'web', via: 'native' }],
+            policy: 'combine',
+            dependsOn: ['company'],
+          },
+          {
+            kind: 'column',
+            id: 's2',
+            label: 'CEO LinkedIn',
+            instruction: "Find the CEO's LinkedIn URL.",
+            reads: ['ceo'],
+            output: { mode: 'create', key: 'ceo_linkedin' },
+            sources: [{ type: 'web', via: 'native' }],
+            policy: 'combine',
+            dependsOn: ['s1'],
+          },
+        ],
+      }),
+    );
+
+    const plan = await planDoggo('list the top 10 EV companies and their CEOs and CEO LinkedIn', {
+      rowCount: 0,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(3);
+
+    const [s0, s1, s2] = plan!.steps;
+    expect(isSourceRowsStep(s0!)).toBe(true);
+    const src = s0 as SourceRowsStep;
+    expect(src.kind).toBe('source-rows');
+    expect(src.count).toBe(10);
+    expect(src.primaryField).toBe('company');
+
+    const c1 = s1 as ColumnStep;
+    const c2 = s2 as ColumnStep;
+    expect(c1.kind).toBe('column');
+    // A column may depend on the sourced primaryField.
+    expect(c1.dependsOn).toEqual(['company']);
+    expect(c1.reads).toContain('company');
+    // dependsOn normalized from step id (s1) → output key (ceo).
+    expect(c2.dependsOn).toEqual(['ceo']);
+    expect(c2.reads).toContain('ceo');
+  });
+
+  it('clamps an oversized count and defaults primaryField', async () => {
+    getLLM.mockReturnValue(
+      fakeLLM({
+        steps: [{ kind: 'source-rows', description: 'all the companies', count: 999 }],
+      }),
+    );
+    const plan = await planDoggo('list everything', { rowCount: 0 });
+    const src = plan!.steps[0] as SourceRowsStep;
+    // The planner keeps the requested count as-is; sourceRows itself clamps at run time.
+    expect(src.count).toBe(999);
+    expect(src.primaryField).toBe('company');
+  });
+
+  it('planGoal drops source-rows steps (back-compat: columns only)', async () => {
+    getLLM.mockReturnValue(
+      fakeLLM({
+        steps: [
+          { kind: 'source-rows', description: 'top 5 banks', count: 5, primaryField: 'company' },
+          {
+            kind: 'column',
+            id: 's1',
+            label: 'CEO',
+            instruction: 'Find CEO.',
+            reads: ['company'],
+            output: { key: 'ceo' },
+            sources: [{ type: 'llm' }],
+            policy: 'combine',
+            dependsOn: [],
+          },
+        ],
+      }),
+    );
+    const plan = await planGoal('top 5 banks and their CEOs');
+    // Only the column step survives; the legacy shape has no `kind`.
+    expect(plan!.steps).toHaveLength(1);
+    expect(plan!.steps[0]!.output.key).toBe('ceo');
+    expect('kind' in plan!.steps[0]!).toBe(false);
   });
 });

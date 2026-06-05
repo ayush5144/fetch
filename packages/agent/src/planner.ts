@@ -43,29 +43,84 @@ export interface DogiPlan {
   steps: DogiPlanStep[];
 }
 
+// ── Doggo plan (row-sourcing + columns) ───────────────────────────────────────
+// Doggo is a superset of the column planner: a plan step is EITHER a row-sourcing
+// step (CREATE rows) or a column step (today's DogiPlanStep — enrich rows). A
+// step with NO `kind` is treated as `'column'`, so existing apply-plan/ask-dogi
+// callers keep working unchanged. See devx/doggo.md §3/§5.
+
+/** A step that CREATES rows: generate `count` entities and insert them as leads. */
+export interface SourceRowsStep {
+  kind: 'source-rows';
+  /** Plain-language description of the entities to create ("top 10 EV companies"). */
+  description: string;
+  /** Target number of entities (clamped to [1, 50] at run time). */
+  count: number;
+  /** The object key each generated entity carries (snake_case, e.g. "company"). */
+  primaryField: string;
+  /** Human label for that field's column. */
+  primaryLabel: string;
+}
+
+/** A column step is today's DogiPlanStep, tagged with `kind: 'column'`. */
+export type ColumnStep = { kind: 'column' } & DogiPlanStep;
+
+/** One Doggo plan step: create rows, or build/enrich a column. */
+export type DoggoPlanStep = SourceRowsStep | ColumnStep;
+
+export interface DoggoPlan {
+  goal: string;
+  steps: DoggoPlanStep[];
+}
+
+/** A step with no `kind` is a legacy column step (back-compat). */
+export function isSourceRowsStep(step: { kind?: string }): step is SourceRowsStep {
+  return step.kind === 'source-rows';
+}
+
+/** Normalize any plan step into a tagged column step (the back-compat default). */
+export function asColumnStep(step: DoggoPlanStep | DogiPlanStep): ColumnStep {
+  if ('kind' in step && step.kind === 'column') return step;
+  // Strip a possible `kind` field, then re-tag as a column step.
+  const { kind: _kind, ...rest } = step as ColumnStep;
+  return { kind: 'column', ...(rest as DogiPlanStep) };
+}
+
 /** Context for a planning call — the table's existing columns + a BYOK key. */
 export interface PlanContext {
   /** Existing column keys in the table, so the planner can read them. */
   existingColumns?: string[];
+  /** Current number of rows in the table (0 → favor a leading source-rows step). */
+  rowCount?: number;
   /** Brain selection for the planning call (provider/model). */
   brain?: { provider?: GetLLMOptions['provider']; model?: string; keySource?: 'env' | 'byok' };
   /** BYOK key for this call; never persisted or logged. */
   apiKey?: string;
 }
 
-const SYSTEM = `You are Dogi's planner inside Fetch, a B2B lead workspace.
-The user gives you a GOAL. You decompose it into an ordered list of "steps",
-each of which becomes ONE new column that an agent fills for every lead.
+const SYSTEM = `You are Doggo's planner inside Fetch, a B2B lead workspace.
+The user gives you a GOAL. You decompose it into an ordered list of "steps".
+A step is EITHER:
+  (A) a row-sourcing step that CREATES rows (entities) in the table, or
+  (B) a column step that an agent fills for every row (enrichment).
 
 Return ONLY a single JSON object, no prose, of this exact shape:
 {
   "steps": [
     {
+      "kind": "source-rows",
+      "description": "the top 10 EV companies in the world",
+      "count": 10,
+      "primaryField": "company",
+      "primaryLabel": "Company"
+    },
+    {
+      "kind": "column",
       "id": "s1",
-      "label": "CEO email",
-      "instruction": "Find the company's CEO's email address.",
-      "reads": ["company", "domain"],
-      "output": { "mode": "create", "key": "ceo_email", "label": "CEO email" },
+      "label": "CEO",
+      "instruction": "Find the company's CEO's full name.",
+      "reads": ["company"],
+      "output": { "mode": "create", "key": "ceo", "label": "CEO" },
       "sources": [{ "type": "web", "via": "native" }, { "type": "llm" }],
       "policy": "combine",
       "dependsOn": []
@@ -73,19 +128,37 @@ Return ONLY a single JSON object, no prose, of this exact shape:
   ]
 }
 
-Rules:
-- Each step's output.key is snake_case and unique within the plan.
-- A step that uses an earlier step's value MUST (a) list that earlier step's
-  output.key in "reads" AND (b) list that key in "dependsOn".
+When to emit a row-sourcing step:
+- If the goal asks to BUILD A LIST or FIND N entities ("top 10 companies",
+  "the largest US banks", "list 20 SaaS startups"), emit ONE leading
+  "source-rows" step that creates those entities, THEN column steps that enrich
+  them. This is ESPECIALLY required when the table is currently empty — with no
+  rows there is nothing for columns to fill.
+- "count" is the number requested (default 10 if vague). "primaryField" is the
+  snake_case key the created rows carry (usually "company" or "name"); the
+  enrichment columns then read it.
+- If the goal only enriches rows that already exist, emit NO source-rows step.
+
+Column step rules:
+- "kind" is "column". output.key is snake_case and unique within the plan.
+- A column step that uses an earlier column's value (or the sourced primaryField)
+  MUST list that key in BOTH "reads" and "dependsOn".
 - "sources" is any of: { "type": "provider", "name": "<name>" },
   { "type": "web", "via": "native" | "external" }, { "type": "scrape", "via": "firecrawl" },
   { "type": "llm" }. A pure writing/transform step uses just [{ "type": "llm" }].
 - "policy" is "combine" (default) or "first".
-- Order steps so dependencies come first.
+- Order steps so the row-sourcing step (if any) comes first, then dependencies.
 Return the JSON object and nothing else.`;
 
 /** The raw JSON we expect back; everything is validated/normalized below. */
 interface RawStep {
+  kind?: unknown;
+  // source-rows fields
+  description?: unknown;
+  count?: unknown;
+  primaryField?: unknown;
+  primaryLabel?: unknown;
+  // column fields
   id?: unknown;
   label?: unknown;
   instruction?: unknown;
@@ -126,6 +199,23 @@ function normalizeSources(v: unknown): DogiSource[] {
     }
   }
   return out.length ? out : [{ type: 'llm' }];
+}
+
+/** Turn one raw step into a normalized SourceRowsStep, or null when unusable. */
+function normalizeSourceRows(raw: RawStep): SourceRowsStep | null {
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  if (!description) return null;
+  const rawCount = typeof raw.count === 'number' ? raw.count : Number(raw.count);
+  const count = Number.isFinite(rawCount) && rawCount > 0 ? Math.floor(rawCount) : 10;
+  const primaryField =
+    typeof raw.primaryField === 'string' && raw.primaryField.trim()
+      ? snake(raw.primaryField)
+      : 'company';
+  const primaryLabel =
+    typeof raw.primaryLabel === 'string' && raw.primaryLabel.trim()
+      ? raw.primaryLabel.trim()
+      : primaryField.replace(/_/g, ' ').replace(/^\w/, (m) => m.toUpperCase());
+  return { kind: 'source-rows', description, count, primaryField, primaryLabel };
 }
 
 /** Turn one raw step into a normalized DogiPlanStep, or null when unusable. */
@@ -174,12 +264,14 @@ function parsePlanJson(text: string): { steps?: unknown } | null {
 }
 
 /**
- * Plan a goal into an ordered list of cell-Dogis. Returns `null` when no LLM is
- * configured (the caller surfaces a "no LLM" reason). Output keys are normalized
- * to snake_case and made unique; `dependsOn` is filtered to keys that actually
- * exist among earlier steps, so the dependency graph is always sound.
+ * The shared planner: one LLM call, then defensive normalization into a full
+ * Doggo plan (row-sourcing steps + column steps). Returns `null` when no LLM is
+ * configured. Column output keys are snake_cased and made unique; the sourced
+ * primaryField counts as a "known key" so a column may depend on it. `dependsOn`
+ * is filtered to keys that actually exist among earlier steps + sourced fields,
+ * so the dependency graph is always sound.
  */
-export async function planGoal(goal: string, ctx: PlanContext = {}): Promise<DogiPlan | null> {
+async function runPlanner(goal: string, ctx: PlanContext): Promise<DoggoPlan | null> {
   const log = logger.child({ goal });
 
   const opts: GetLLMOptions = {};
@@ -189,13 +281,22 @@ export async function planGoal(goal: string, ctx: PlanContext = {}): Promise<Dog
 
   const llm = getLLM(opts);
   if (!llm) {
-    log.info('planGoal: no LLM configured');
+    log.info('planner: no LLM configured');
     return null;
   }
 
-  const userContext = ctx.existingColumns?.length
-    ? `\n\nExisting columns the steps may read: ${ctx.existingColumns.join(', ')}.`
-    : '';
+  const parts: string[] = [];
+  if (ctx.existingColumns?.length) {
+    parts.push(`Existing columns the steps may read: ${ctx.existingColumns.join(', ')}.`);
+  }
+  if (ctx.rowCount != null) {
+    parts.push(
+      ctx.rowCount === 0
+        ? 'The table is currently EMPTY (0 rows) — if the goal implies a list of entities, you MUST emit a leading source-rows step.'
+        : `The table currently has ${ctx.rowCount} rows.`,
+    );
+  }
+  const userContext = parts.length ? `\n\n${parts.join('\n')}` : '';
 
   const res = await llm.chat({
     messages: [
@@ -203,38 +304,78 @@ export async function planGoal(goal: string, ctx: PlanContext = {}): Promise<Dog
       { role: 'user', content: `Goal: ${goal}${userContext}` },
     ],
     json: true,
-    maxTokens: 1500,
+    maxTokens: 1800,
   });
 
   const parsed = parsePlanJson(res.text);
   const rawSteps = Array.isArray(parsed?.steps) ? (parsed!.steps as RawStep[]) : [];
 
-  // Normalize each step, then de-duplicate output keys across the plan.
+  // First pass: normalize each step in order, splitting into source-rows vs
+  // column. A step with no `kind` is treated as a column (back-compat).
+  const sourcedKeys = new Set<string>(); // primaryFields the sourcing steps create
   const usedKeys = new Set<string>();
-  const steps: DogiPlanStep[] = [];
+  const steps: DoggoPlanStep[] = [];
+  const columnSteps: ColumnStep[] = [];
+
   for (let i = 0; i < rawSteps.length; i++) {
-    const step = normalizeStep(rawSteps[i]!, i);
-    if (!step) continue;
-    let key = step.output.key;
+    const raw = rawSteps[i]!;
+    if (raw.kind === 'source-rows') {
+      const sr = normalizeSourceRows(raw);
+      if (!sr) continue;
+      sourcedKeys.add(sr.primaryField);
+      steps.push(sr);
+      continue;
+    }
+    const col = normalizeStep(raw, i);
+    if (!col) continue;
+    let key = col.output.key;
     let n = 1;
-    while (usedKeys.has(key)) key = `${step.output.key}_${++n}`;
+    while (usedKeys.has(key)) key = `${col.output.key}_${++n}`;
     usedKeys.add(key);
-    step.output.key = key;
-    steps.push(step);
+    col.output.key = key;
+    const tagged: ColumnStep = { kind: 'column', ...col };
+    steps.push(tagged);
+    columnSteps.push(tagged);
   }
 
-  // Keep only dependsOn entries that point at an earlier step's output key, and
-  // make sure those keys are also in `reads` (a dependency you can't see is a bug).
+  // Resolve dependsOn against column output keys AND sourced primaryFields, then
+  // make sure every dependency is also readable.
   const keyOf = new Map<string, string>(); // step id → output key
-  for (const s of steps) keyOf.set(s.id, s.output.key);
-  const validKeys = new Set(steps.map((s) => s.output.key));
-  for (const s of steps) {
+  for (const s of columnSteps) keyOf.set(s.id, s.output.key);
+  const validKeys = new Set<string>([...columnSteps.map((s) => s.output.key), ...sourcedKeys]);
+  for (const s of columnSteps) {
     s.dependsOn = [...new Set(s.dependsOn.map((d) => keyOf.get(d) ?? d).filter((k) => validKeys.has(k)))];
     for (const dep of s.dependsOn) {
       if (!s.reads.includes(dep)) s.reads.push(dep);
     }
   }
 
-  log.info('planGoal produced a plan', { steps: steps.length });
+  log.info('planner produced a plan', { steps: steps.length, sourced: sourcedKeys.size });
   return { goal, steps };
+}
+
+/**
+ * Plan a goal into the FULL Doggo plan — ordered row-sourcing steps (create
+ * rows) and column steps (enrich rows). This is what `/doggo/plan` returns and
+ * `/doggo/run` executes. Returns `null` when no LLM is configured.
+ */
+export async function planDoggo(goal: string, ctx: PlanContext = {}): Promise<DoggoPlan | null> {
+  return runPlanner(goal, ctx);
+}
+
+/**
+ * Plan a goal into an ordered list of cell-Dogis (COLUMN steps only). This is
+ * the back-compat surface for `ask-dogi`/`apply-plan`, which only build columns
+ * over existing rows — any row-sourcing step the planner emits is dropped here.
+ * Returns `null` when no LLM is configured.
+ */
+export async function planGoal(goal: string, ctx: PlanContext = {}): Promise<DogiPlan | null> {
+  const plan = await runPlanner(goal, ctx);
+  if (!plan) return null;
+  const steps = plan.steps.filter((s): s is ColumnStep => !isSourceRowsStep(s));
+  // Return bare DogiPlanStep shape (drop the `kind` tag) for back-compat.
+  return {
+    goal: plan.goal,
+    steps: steps.map(({ kind: _kind, ...rest }) => rest),
+  };
 }
