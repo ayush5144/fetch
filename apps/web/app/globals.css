@@ -584,8 +584,7 @@ table.tbl {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 24px;
   background: var(--bg);
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -594,11 +593,14 @@ table.tbl {
   flex: 1;
 }
 
-/* The scrollable spreadsheet area */
+/* The scrollable spreadsheet area. Outer padding so the table floats with
+   breathing room from the sidebar and edges instead of running flush. */
 .grid-scroll {
   flex: 1;
   overflow: auto;
   position: relative;
+  /* Horizontal + bottom only — no top padding so the sticky header stays flush. */
+  padding: 0 24px 24px;
 }
 
 /* Grid table — no cell padding added here; cells control their own */
@@ -609,12 +611,12 @@ table.grid-tbl {
   table-layout: fixed;
 }
 
-/* Comfortable grid row height */
+/* Tighter, cleaner cells; the breathing room is around the whole table. */
 :root {
-  --grid-row-h: 42px;
-  --grid-th-h: 40px;
-  --grid-cell-px: 13px;
-  --grid-cell-py: 9px;
+  --grid-row-h: 34px;
+  --grid-th-h: 36px;
+  --grid-cell-px: 12px;
+  --grid-cell-py: 5px;
 }
 
 /* Column sizes */
@@ -1194,11 +1196,9 @@ table.grid-tbl {
   border-radius: var(--radius-sm);
   font-family: inherit;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 0.12s ease, background 0.12s ease;
-}
-.card:hover .table-card-menu-btn {
+  /* Always visible (3-dots), like the column header menu. */
   opacity: 1;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .table-card-menu-btn:hover {
   background: var(--surface-2);

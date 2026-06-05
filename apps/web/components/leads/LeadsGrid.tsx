@@ -165,9 +165,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   const rowDrag = useRef<{ id: string } | null>(null);
   const [rowDragOver, setRowDragOver] = useState<{ id: string; side: 'above' | 'below' } | null>(null);
 
-  // ── New lead inline row
-  const [addingLead, setAddingLead] = useState(false);
-  const [newLeadForm, setNewLeadForm] = useState({ firstName: '', lastName: '', email: '', company: '' });
+  // ── Add row (blank — the user fills this table's own columns inline)
   const [addLeadBusy, setAddLeadBusy] = useState(false);
 
   // ── Column widths (local override, persisted on drag end)
@@ -358,16 +356,15 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
     }
   }
 
-  async function addLead() {
+  async function addRow() {
     if (addLeadBusy) return;
     setAddLeadBusy(true);
     try {
-      await api.post(`/tables/${tableId}/leads`, newLeadForm);
-      setNewLeadForm({ firstName: '', lastName: '', email: '', company: '' });
-      setAddingLead(false);
+      // Create a blank row; the user fills this table's columns by editing cells.
+      await api.post(`/tables/${tableId}/leads`, {});
       onRefreshLeads();
     } catch (e) {
-      console.error('add lead failed', e);
+      console.error('add row failed', e);
     } finally {
       setAddLeadBusy(false);
     }
@@ -676,75 +673,12 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
               );
             })}
 
-            {/* Inline add-lead row */}
-            {addingLead ? (
-              <tr>
-                <td><div className="grid-cell-check" /></td>
-                <td><div className="grid-cell-num">{leads.length + 1}</div></td>
-                {/* First few system-like fields */}
-                <td colSpan={Math.max(columns.length, 1)}>
-                  <form
-                    style={{ display: 'flex', gap: 6, padding: '4px 8px', alignItems: 'center', flexWrap: 'wrap' }}
-                    onSubmit={(e) => { e.preventDefault(); addLead(); }}
-                  >
-                    <input
-                      className="input"
-                      style={{ width: 110, height: 28, fontSize: 12, padding: '4px 8px' }}
-                      placeholder="First name"
-                      value={newLeadForm.firstName}
-                      onChange={(e) => setNewLeadForm({ ...newLeadForm, firstName: e.target.value })}
-                      autoFocus
-                    />
-                    <input
-                      className="input"
-                      style={{ width: 110, height: 28, fontSize: 12, padding: '4px 8px' }}
-                      placeholder="Last name"
-                      value={newLeadForm.lastName}
-                      onChange={(e) => setNewLeadForm({ ...newLeadForm, lastName: e.target.value })}
-                    />
-                    <input
-                      className="input"
-                      style={{ width: 160, height: 28, fontSize: 12, padding: '4px 8px' }}
-                      placeholder="Email"
-                      value={newLeadForm.email}
-                      onChange={(e) => setNewLeadForm({ ...newLeadForm, email: e.target.value })}
-                    />
-                    <input
-                      className="input"
-                      style={{ width: 130, height: 28, fontSize: 12, padding: '4px 8px' }}
-                      placeholder="Company"
-                      value={newLeadForm.company}
-                      onChange={(e) => setNewLeadForm({ ...newLeadForm, company: e.target.value })}
-                    />
-                    <button
-                      type="submit"
-                      className="btn btn-accent btn-sm"
-                      disabled={addLeadBusy}
-                      style={{ height: 28, padding: '0 10px', fontSize: 12 }}
-                    >
-                      {addLeadBusy ? 'Adding…' : 'Add'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setAddingLead(false)}
-                      onKeyDown={(e) => e.key === 'Escape' && setAddingLead(false)}
-                      style={{ height: 28, padding: '0 10px', fontSize: 12 }}
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                </td>
-                <td style={{ background: 'var(--surface)' }} />
-              </tr>
-            ) : null}
-
-            {leads.length === 0 && !addingLead && (
+            {leads.length === 0 && (
               <tr>
                 <td colSpan={columns.length + 3}>
                   <div className="empty">
                     <div className="empty-icon">☰</div>
-                    No leads yet. Import a CSV or add one below.
+                    No rows yet. Add a row or import a CSV.
                   </div>
                 </td>
               </tr>
@@ -752,16 +686,16 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           </tbody>
         </table>
 
-        {/* + new lead footer */}
+        {/* + add row footer — creates a blank row; fill the table's columns inline */}
         <div
           className="grid-add-row"
-          onClick={() => setAddingLead(true)}
+          onClick={() => !addLeadBusy && addRow()}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && setAddingLead(true)}
+          onKeyDown={(e) => e.key === 'Enter' && !addLeadBusy && addRow()}
         >
           <span style={{ fontSize: 14 }}>+</span>
-          <span>New lead</span>
+          <span>{addLeadBusy ? 'Adding…' : 'Add row'}</span>
         </div>
       </div>
 

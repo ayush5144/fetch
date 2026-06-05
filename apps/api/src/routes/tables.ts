@@ -96,7 +96,15 @@ tablesRoutes.post('/:id/leads', async (c) => {
   )[0]!;
 
   const { lead, created } = await ingestLead(canonical, { sourceId: source!.id, tableId, actor: 'user' });
-  if (created && lead.email) await enqueue('validate', { leadId: lead.id });
+  if (created) {
+    // Append the new row at the end of the table (one past the current max).
+    const [row] = await db
+      .select({ maxPos: sql<number>`coalesce(max(${leads.position}), -1)::int` })
+      .from(leads)
+      .where(eq(leads.tableId, tableId));
+    await db.update(leads).set({ position: (row?.maxPos ?? -1) + 1 }).where(eq(leads.id, lead.id));
+    if (lead.email) await enqueue('validate', { leadId: lead.id });
+  }
   return c.json({ lead, created }, created ? 201 : 200);
 });
 
