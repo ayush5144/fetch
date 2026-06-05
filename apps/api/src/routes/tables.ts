@@ -153,12 +153,14 @@ tablesRoutes.post('/:id/columns', async (c) => {
 const runSchema = z.object({
   leadIds: z.array(z.string()).default([]),
   force: z.boolean().default(false),
+  /** Optional BYOK key for this run; passed to the job, never persisted. */
+  apiKey: z.string().optional(),
 });
 
 tablesRoutes.post('/:id/columns/:key/run', async (c) => {
   const tableId = c.req.param('id');
   const key = c.req.param('key');
-  const { leadIds, force } = runSchema.parse(await c.req.json().catch(() => ({})));
+  const { leadIds, force, apiKey } = runSchema.parse(await c.req.json().catch(() => ({})));
 
   const plan = await planRun(tableId, key, leadIds, { force });
   if (!plan) return c.json({ error: 'unknown column' }, 404);
@@ -173,7 +175,9 @@ tablesRoutes.post('/:id/columns/:key/run', async (c) => {
 
   const jobIds: string[] = [];
   for (const lead of plan.toRun) {
-    jobIds.push(await enqueue('enrich', { leadId: lead.id, columnKey: key }, { leadId: lead.id }));
+    jobIds.push(
+      await enqueue('enrich', { leadId: lead.id, columnKey: key, apiKey }, { leadId: lead.id }),
+    );
   }
   return c.json({ type: plan.column.type, enqueued: jobIds.length, skipped: plan.skipped }, 202);
 });

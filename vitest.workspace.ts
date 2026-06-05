@@ -39,6 +39,9 @@ export default defineWorkspace([
       environment: 'node',
       include: ['{packages,apps}/*/test/**/*.test.ts'],
       exclude: ['**/*.db.test.ts', '**/node_modules/**'],
+      // A dummy DATABASE_URL so getEnv()/the pool can construct in unit tests
+      // (no test connects). Keeps unit tests independent of a running Postgres.
+      env: { DATABASE_URL: 'postgres://fetch:fetch@localhost:5432/fetch_unit' },
     },
   },
   {

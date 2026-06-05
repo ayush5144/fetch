@@ -172,8 +172,10 @@ leadsRoutes.post('/:id/run/:columnKey', async (c) => {
   if (column.type === 'manual') {
     return c.json({ error: 'manual columns are edited inline, not run' }, 400);
   }
+  // Optional BYOK key for this run (never persisted).
+  const body = await c.req.json().catch(() => ({}) as { apiKey?: string });
   // dogi | formula resolve in the worker via the enrich queue.
-  const jobId = await enqueue('enrich', { leadId, columnKey }, { leadId });
+  const jobId = await enqueue('enrich', { leadId, columnKey, apiKey: body.apiKey }, { leadId });
   return c.json({ jobId }, 202);
 });
 

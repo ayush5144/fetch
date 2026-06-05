@@ -40,6 +40,11 @@ export interface EnrichJobData {
   leadId: string;
   /** The user column being filled (its key in leads.data). */
   columnKey: string;
+  /**
+   * Optional BYOK key for this run (Dogi `keySource: 'byok'`). Passed through to
+   * the LLM/provider for this job only — NEVER persisted to the DB or logged.
+   */
+  apiKey?: string;
 }
 
 export interface ValidateJobData {

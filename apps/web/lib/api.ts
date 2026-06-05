@@ -59,19 +59,56 @@ export type ValueType = 'text' | 'email' | 'url' | 'number' | 'date' | 'select' 
 /** Fill method determining how cells are populated */
 export type FillMethod = 'manual' | 'dogi' | 'formula';
 
+// ── Dogi config sub-types ────────────────────────────────────────────────────
+
+export type DogiOutputMode = 'fill' | 'create' | 'map';
+
+export interface DogiOutput {
+  mode: DogiOutputMode;
+  key?: string;
+  label?: string;
+}
+
+export type DataProviderName = 'apollo' | 'hunter';
+export type WebSearchVia = 'native' | 'external';
+
+export type DogiSource =
+  | { type: 'provider'; name: DataProviderName }
+  | { type: 'web'; via: WebSearchVia }
+  | { type: 'scrape'; via: 'firecrawl' }
+  | { type: 'llm' };
+
+export type LLMProvider = 'anthropic' | 'openai' | 'gemini' | 'grok';
+export type KeySource = 'env' | 'byok';
+
+export interface DogiBrain {
+  provider: LLMProvider;
+  model: string;
+  keySource: KeySource;
+}
+
+/** Full column config — union of all column type configs */
+export interface ColumnConfig {
+  valueType?: ValueType;
+  fillMethod?: FillMethod;
+  options?: string[];          // select type
+  expr?: string;               // formula type
+  // Dogi-specific fields
+  instruction?: string;
+  reads?: string[];
+  output?: DogiOutput;
+  sources?: DogiSource[];
+  policy?: 'combine' | 'first';
+  brain?: DogiBrain;
+  [key: string]: unknown;
+}
+
 export interface Column {
   id: string;
   key: string;
   label: string;
   type: 'enrichment' | 'agent' | 'formula' | 'manual' | 'dogi';
-  config: {
-    valueType?: ValueType;
-    fillMethod?: FillMethod;
-    options?: string[];        // for select type
-    instruction?: string;      // for dogi type
-    reads?: string[];          // for dogi type
-    [key: string]: unknown;
-  };
+  config: ColumnConfig;
   /** display order position */
   position?: number;
   /** column width in pixels */

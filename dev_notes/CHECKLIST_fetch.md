@@ -295,29 +295,29 @@ only; build after sign-off. Every phase ends with
 
 ## Phase C - Dogi (Single Cell) And Providers
 
-- [ ] Unify `enrichment` + `agent` column types into a single `dogi` type (keep `formula`, `manual`, and the new value types)
+- [x] Unify `enrichment` + `agent` column types into a single `dogi` type (keep `formula`, `manual`, and the new value types)
   - Test: an existing enrichment column migrates to `dogi` with equivalent behavior.
-- [ ] Dogi config form: `instruction`, `reads`, `output`, `sources`, `policy`, `brain` (brain optional)
+- [x] Dogi config form: `instruction`, `reads`, `output`, `sources`, `policy`, `brain` (brain optional)
   - Test: the form persists a valid `dogi` config and reloads it for editing.
-- [ ] Output mapping: `create` new column (preview + confirm + audit) or `map` to existing
+- [x] Output mapping: `create` new column (preview + confirm + audit) or `map` to existing
   - Test: "create" adds a new column before first run and audits it; "map" writes into the chosen existing key.
-- [ ] Sources are optional + selectable: data provider · web search · scrape · LLM (each toggleable anytime)
+- [x] Sources are optional + selectable: data provider · web search · scrape · LLM (each toggleable anytime)
   - Test: a providers-only Dogi makes **no** LLM call; an LLM+web Dogi makes no provider call.
-- [ ] Data-provider integration — **one provider at a time for now** (Apollo / ZoomInfo / RocketReach), ranked multi-source later
+- [x] Data-provider integration — **one provider at a time for now** (Apollo / ZoomInfo / RocketReach), ranked multi-source later
   - Test: selecting Apollo runs only Apollo; switching to ZoomInfo runs only ZoomInfo.
-- [ ] Combine `policy`: **combine** (default — use all enabled sources) or **first** (stop at first confident hit)
+- [x] Combine `policy`: **combine** (default — use all enabled sources) or **first** (stop at first confident hit)
   - Test: `first` stops once a confident value is found (later sources not called); `combine` runs all enabled sources.
-- [ ] LLM layer: add Gemini and Grok clients beside Anthropic/OpenAI behind `LLMClient`
+- [x] LLM layer: add Gemini and Grok clients beside Anthropic/OpenAI behind `LLMClient`
   - Test: each provider returns a structured result from a mocked HTTP response.
-- [ ] Native web search path per provider (Anthropic `web_search`, Gemini `googleSearch`, OpenAI/Grok `web_search`)
+- [x] Native web search path per provider (Anthropic `web_search`, Gemini `googleSearch`, OpenAI/Grok `web_search`)
   - Test: with web source `native`, the provider request includes its search tool; without it, it does not.
-- [ ] Web/scrape backends: `native` | `serper` (search) and `firecrawl` (scrape) selectable
+- [x] Web/scrape backends: `native` | `serper` (search) and `firecrawl` (scrape) selectable
   - Test: `serper`/`firecrawl` route through our existing tools.
-- [ ] BYOK + env key resolution per run (`keySource: env | byok`)
+- [x] BYOK + env key resolution per run (`keySource: env | byok`)
   - Test: a BYOK key is used for the run and never written to DB/logs; env key is used when `keySource=env`.
-- [ ] Execution: transform (no tools) vs research loop (tools), bounded by `maxSteps`
+- [x] Execution: transform (no tools) vs research loop (tools), bounded by `maxSteps`
   - Test: a transform Dogi makes one call; a research Dogi loops and stops at the step ceiling.
-- [ ] Structured output + provenance written via existing `writeCell`
+- [x] Structured output + provenance written via existing `writeCell`
   - Test: a Dogi cell stores value + `{confidence, source, provider}`; the grid renders both.
 
 ## Phase D - Goal Mode (Dogi Plans + Builds Columns)

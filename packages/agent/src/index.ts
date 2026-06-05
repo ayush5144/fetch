@@ -4,4 +4,5 @@
  * with confidence + provenance; bounded by a step/cost ceiling.
  */
 export * from './loop';
+export * from './dogi';
 export * from './tools';

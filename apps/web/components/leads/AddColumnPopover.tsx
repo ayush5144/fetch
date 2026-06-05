@@ -2,15 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { DogiConfigForm, type DogiConfig } from './DogiConfigForm';
-import type { ValueType, FillMethod } from '@/lib/api';
+import type { ValueType, FillMethod, Column } from '@/lib/api';
 
 /**
- * Inline popover for creating a new column. Anchored next to the + header cell,
- * not a centered modal. Two-step picker: pick a type (value type or fill method)
- * then name it. Submits via the onSubmit callback.
+ * Inline popover for creating or editing a column. Anchored next to the
+ * trigger element, not a centered modal.
+ *
+ * When `editColumn` is provided the popover is in edit mode — it pre-fills
+ * from the existing column and submits via `onEdit` (PATCH /columns/:id).
  *
  * Friendly names and icons per leads-grid.md §2.1.
  */
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface TypeDef {
   id: string;
@@ -24,20 +28,28 @@ interface TypeDef {
 
 const TYPES: TypeDef[] = [
   // Value types
-  { id: 'text', label: 'Text', icon: 'T', blurb: 'Any text', group: 'value', valueType: 'text', fillMethod: 'manual' },
-  { id: 'email', label: 'Email', icon: '✉', blurb: 'Valid email', group: 'value', valueType: 'email', fillMethod: 'manual' },
-  { id: 'url', label: 'URL', icon: '🔗', blurb: 'A link', group: 'value', valueType: 'url', fillMethod: 'manual' },
-  { id: 'number', label: 'Number', icon: '#', blurb: 'Numeric', group: 'value', valueType: 'number', fillMethod: 'manual' },
-  { id: 'date', label: 'Date', icon: '📅', blurb: 'A date', group: 'value', valueType: 'date', fillMethod: 'manual' },
-  { id: 'select', label: 'Select', icon: '▾', blurb: 'Pick one', group: 'value', valueType: 'select', fillMethod: 'manual' },
-  { id: 'checkbox', label: 'Checkbox', icon: '☑', blurb: 'Yes / no', group: 'value', valueType: 'checkbox', fillMethod: 'manual' },
+  { id: 'text',     label: 'Text',     icon: 'T',  blurb: 'Any text',     group: 'value', valueType: 'text',     fillMethod: 'manual' },
+  { id: 'email',    label: 'Email',    icon: '✉',  blurb: 'Valid email',  group: 'value', valueType: 'email',    fillMethod: 'manual' },
+  { id: 'url',      label: 'URL',      icon: '🔗', blurb: 'A link',       group: 'value', valueType: 'url',      fillMethod: 'manual' },
+  { id: 'number',   label: 'Number',   icon: '#',  blurb: 'Numeric',      group: 'value', valueType: 'number',   fillMethod: 'manual' },
+  { id: 'date',     label: 'Date',     icon: '📅', blurb: 'A date',       group: 'value', valueType: 'date',     fillMethod: 'manual' },
+  { id: 'select',   label: 'Select',   icon: '▾',  blurb: 'Pick one',     group: 'value', valueType: 'select',   fillMethod: 'manual' },
+  { id: 'checkbox', label: 'Checkbox', icon: '☑',  blurb: 'Yes / no',     group: 'value', valueType: 'checkbox', fillMethod: 'manual' },
   // Fill methods
-  { id: 'dogi', label: 'Dogi (AI)', icon: '🐕', blurb: 'Agent fills it', group: 'fill', fillMethod: 'dogi', valueType: 'text' },
-  { id: 'formula', label: 'Formula', icon: 'ƒ', blurb: 'Derived', group: 'fill', fillMethod: 'formula', valueType: 'text' },
-  { id: 'manual', label: 'Manual', icon: '✎', blurb: 'You type it', group: 'fill', fillMethod: 'manual', valueType: 'text' },
+  { id: 'dogi',    label: 'Dogi (AI)', icon: '🐕', blurb: 'Agent fills it', group: 'fill', fillMethod: 'dogi',    valueType: 'text' },
+  { id: 'formula', label: 'Formula',   icon: 'ƒ',  blurb: 'Derived',        group: 'fill', fillMethod: 'formula', valueType: 'text' },
+  { id: 'manual',  label: 'Manual',    icon: '✎',  blurb: 'You type it',    group: 'fill', fillMethod: 'manual',  valueType: 'text' },
 ];
 
-interface ColumnPayload {
+const DEFAULT_DOGI_CONFIG: DogiConfig = {
+  instruction: '',
+  reads: [],
+  output: { mode: 'fill' },
+  sources: [],
+  policy: 'combine',
+};
+
+export interface ColumnPayload {
   key: string;
   label: string;
   type: string;
@@ -48,16 +60,62 @@ interface Props {
   anchorRect: DOMRect;
   tableId: string;
   availableColumns?: { key: string; label: string }[];
+  /** If provided, the popover is in edit mode and pre-populates from this column. */
+  editColumn?: Column;
   onSubmit: (payload: ColumnPayload) => Promise<void>;
+  /** Called when editing an existing column (PATCH). If not provided, falls back to onSubmit. */
+  onEdit?: (columnId: string, patch: { label: string; config: Record<string, unknown> }) => Promise<void>;
   onClose: () => void;
 }
 
-export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColumns = [] }: Props) {
-  const [label, setLabel] = useState('');
-  const [selectedType, setSelectedType] = useState<TypeDef>(TYPES[0]);
-  const [formula, setFormula] = useState('');
-  const [selectOptions, setSelectOptions] = useState('');
-  const [dogiConfig, setDogiConfig] = useState<DogiConfig>({ instruction: '', reads: [] });
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function typeDefFromColumn(col: Column): TypeDef {
+  // Determine which TypeDef best represents this column
+  if (col.type === 'dogi') return TYPES.find((t) => t.id === 'dogi')!;
+  if (col.type === 'formula') return TYPES.find((t) => t.id === 'formula')!;
+  const vt = col.config?.valueType as string | undefined;
+  return TYPES.find((t) => t.valueType === vt) ?? TYPES[0];
+}
+
+function dogiConfigFromColumn(col: Column): DogiConfig {
+  const c = col.config as Record<string, unknown>;
+  return {
+    instruction: (c.instruction as string) ?? '',
+    reads: (c.reads as string[]) ?? [],
+    output: (c.output as DogiConfig['output']) ?? { mode: 'fill' },
+    sources: (c.sources as DogiConfig['sources']) ?? [],
+    policy: (c.policy as DogiConfig['policy']) ?? 'combine',
+    brain: c.brain as DogiConfig['brain'],
+  };
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
+
+export function AddColumnPopover({
+  anchorRect,
+  onSubmit,
+  onEdit,
+  onClose,
+  availableColumns = [],
+  editColumn,
+}: Props) {
+  const isEdit = Boolean(editColumn);
+
+  const [label, setLabel] = useState(() => editColumn?.label ?? '');
+  const [selectedType, setSelectedType] = useState<TypeDef>(() =>
+    editColumn ? typeDefFromColumn(editColumn) : TYPES[0],
+  );
+  const [formula, setFormula] = useState(() =>
+    (editColumn?.config?.expr as string) ?? '',
+  );
+  const [selectOptions, setSelectOptions] = useState(() =>
+    ((editColumn?.config?.options as string[]) ?? []).join(', '),
+  );
+  const [dogiConfig, setDogiConfig] = useState<DogiConfig>(() =>
+    editColumn?.type === 'dogi' ? dogiConfigFromColumn(editColumn) : DEFAULT_DOGI_CONFIG,
+  );
+  const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -69,8 +127,8 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
 
   // Position the popover near the anchor
   const style: React.CSSProperties = {
-    top: Math.min(anchorRect.bottom + 4, window.innerHeight - 420),
-    left: Math.max(8, Math.min(anchorRect.left, window.innerWidth - 340)),
+    top: Math.min(anchorRect.bottom + 4, window.innerHeight - 500),
+    left: Math.max(8, Math.min(anchorRect.left, window.innerWidth - 360)),
   };
 
   const key = label
@@ -78,45 +136,61 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
+  function buildConfig(): Record<string, unknown> {
+    const config: Record<string, unknown> = {
+      valueType: selectedType.valueType,
+      fillMethod: selectedType.fillMethod,
+    };
+    if (selectedType.id === 'formula') {
+      config.expr = formula;
+    }
+    if (selectedType.id === 'select') {
+      config.options = selectOptions.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    if (selectedType.id === 'dogi') {
+      config.instruction = dogiConfig.instruction;
+      config.reads = dogiConfig.reads;
+      config.output = dogiConfig.output;
+      config.sources = dogiConfig.sources;
+      config.policy = dogiConfig.policy;
+      if (dogiConfig.brain) config.brain = dogiConfig.brain;
+    }
+    return config;
+  }
+
   async function submit() {
-    if (!key) return;
+    if (!key && !isEdit) return;
+    if (isEdit && !label.trim()) return;
     setBusy(true);
     setErr(null);
     try {
-      const config: Record<string, unknown> = {
-        valueType: selectedType.valueType,
-        fillMethod: selectedType.fillMethod,
-      };
-      if (selectedType.id === 'formula') config.expr = formula;
-      if (selectedType.id === 'select') {
-        config.options = selectOptions.split(',').map((s) => s.trim()).filter(Boolean);
-      }
-      if (selectedType.id === 'dogi') {
-        config.instruction = dogiConfig.instruction;
-        config.reads = dogiConfig.reads;
-      }
+      const config = buildConfig();
 
-      // Map to backend type
-      const backendType =
-        selectedType.id === 'dogi' ? 'dogi' :
-        selectedType.id === 'formula' ? 'formula' :
-        'manual';
-
-      await onSubmit({ key, label, type: backendType, config });
+      if (isEdit && editColumn && onEdit) {
+        await onEdit(editColumn.id, { label: label.trim(), config });
+      } else {
+        // Map to backend type
+        const backendType =
+          selectedType.id === 'dogi' ? 'dogi' :
+          selectedType.id === 'formula' ? 'formula' :
+          'manual';
+        await onSubmit({ key, label, type: backendType, config });
+      }
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'failed';
-      // Surface duplicate name errors inline
-      setErr(msg.includes('already exists') || msg.includes('duplicate') || msg.includes('409')
-        ? `A column named "${label}" already exists in this table.`
-        : msg);
+      setErr(
+        msg.includes('already exists') || msg.includes('duplicate') || msg.includes('409')
+          ? `A column named "${label}" already exists in this table.`
+          : msg,
+      );
     } finally {
       setBusy(false);
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !(e.target instanceof HTMLTextAreaElement)) {
       e.preventDefault();
       submit();
     }
@@ -129,7 +203,18 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
   return (
     <>
       <div className="col-popover-backdrop" onClick={onClose} />
-      <div className="col-popover" style={style} ref={popRef} onKeyDown={handleKeyDown}>
+      <div
+        className="col-popover"
+        style={{ ...style, width: selectedType.id === 'dogi' ? 360 : 320, maxHeight: 'calc(100vh - 40px)', overflow: 'auto' }}
+        ref={popRef}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Header */}
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>
+          {isEdit ? 'Edit column' : 'Add column'}
+        </div>
+
+        {/* Label */}
         <div className="field" style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4, display: 'block' }}>
             Column name
@@ -142,47 +227,51 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
             onChange={(e) => { setLabel(e.target.value); setErr(null); }}
             style={{ fontSize: 13 }}
           />
-          {key && (
+          {!isEdit && key && (
             <span className="muted" style={{ fontSize: 11 }}>
               key: <span className="kbd">{key}</span>
             </span>
           )}
         </div>
 
-        <div style={{ marginBottom: 8 }}>
-          <div className="type-picker-section">Value type</div>
-          <div className="type-picker">
-            {valueTypes.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
-                onClick={() => setSelectedType(t)}
-                title={t.blurb}
-              >
-                <span className="type-picker-icon">{t.icon}</span>
-                <span className="type-picker-label">{t.label}</span>
-              </button>
-            ))}
-          </div>
+        {/* Type picker (hidden in edit mode — type can't change) */}
+        {!isEdit && (
+          <div style={{ marginBottom: 8 }}>
+            <div className="type-picker-section">Value type</div>
+            <div className="type-picker">
+              {valueTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedType(t)}
+                  title={t.blurb}
+                >
+                  <span className="type-picker-icon">{t.icon}</span>
+                  <span className="type-picker-label">{t.label}</span>
+                </button>
+              ))}
+            </div>
 
-          <div className="type-picker-section" style={{ marginTop: 8 }}>Fill method</div>
-          <div className="type-picker" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            {fillTypes.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
-                onClick={() => setSelectedType(t)}
-                title={t.blurb}
-              >
-                <span className="type-picker-icon">{t.icon}</span>
-                <span className="type-picker-label">{t.label}</span>
-              </button>
-            ))}
+            <div className="type-picker-section" style={{ marginTop: 8 }}>Fill method</div>
+            <div className="type-picker" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+              {fillTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`type-picker-item ${selectedType.id === t.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedType(t)}
+                  title={t.blurb}
+                >
+                  <span className="type-picker-icon">{t.icon}</span>
+                  <span className="type-picker-label">{t.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
+        {/* Formula input */}
         {selectedType.id === 'formula' && (
           <div className="field" style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
@@ -198,6 +287,7 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
           </div>
         )}
 
+        {/* Select options */}
         {selectedType.id === 'select' && (
           <div className="field" style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
@@ -213,16 +303,20 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
           </div>
         )}
 
+        {/* Dogi config */}
         {selectedType.id === 'dogi' && (
           <div style={{ marginBottom: 12 }}>
             <DogiConfigForm
               value={dogiConfig}
               onChange={setDogiConfig}
               availableColumns={availableColumns}
+              apiKey={apiKey}
+              onApiKeyChange={setApiKey}
             />
           </div>
         )}
 
+        {/* Error */}
         {err && (
           <div style={{
             padding: '8px 10px',
@@ -236,17 +330,20 @@ export function AddColumnPopover({ anchorRect, onSubmit, onClose, availableColum
           </div>
         )}
 
+        {/* Actions */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">
             Cancel
           </button>
           <button
             className="btn btn-accent btn-sm"
-            disabled={busy || !key}
+            disabled={busy || (!isEdit && !key) || (isEdit && !label.trim())}
             onClick={submit}
             type="button"
           >
-            {busy ? 'Creating…' : 'Add column'}
+            {busy
+              ? isEdit ? 'Saving…' : 'Creating…'
+              : isEdit ? 'Save changes' : 'Add column'}
           </button>
         </div>
       </div>

@@ -19,10 +19,12 @@ const schema = z.object({
   // self-host default); when set, data routes require it.
   FETCH_API_TOKEN: z.string().optional(),
 
-  LLM_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
+  LLM_PROVIDER: z.enum(['anthropic', 'openai', 'gemini', 'grok']).default('anthropic'),
   LLM_MODEL: z.string().default('claude-opus-4-8'),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  GROK_API_KEY: z.string().optional(),
 
   APOLLO_API_KEY: z.string().optional(),
   HUNTER_API_KEY: z.string().optional(),
@@ -67,7 +69,15 @@ export function isConfigured(capability: 'llm' | 'instantly' | 'smartlead' | 're
   const env = getEnv();
   switch (capability) {
     case 'llm':
-      return Boolean(env.LLM_PROVIDER === 'anthropic' ? env.ANTHROPIC_API_KEY : env.OPENAI_API_KEY);
+      return Boolean(
+        env.LLM_PROVIDER === 'anthropic'
+          ? env.ANTHROPIC_API_KEY
+          : env.LLM_PROVIDER === 'openai'
+            ? env.OPENAI_API_KEY
+            : env.LLM_PROVIDER === 'gemini'
+              ? env.GEMINI_API_KEY
+              : env.GROK_API_KEY,
+      );
     case 'instantly':
       return Boolean(env.INSTANTLY_API_KEY);
     case 'smartlead':

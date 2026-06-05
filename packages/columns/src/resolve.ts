@@ -1,4 +1,4 @@
-import { runAgent } from '@fetch/agent';
+import { runAgent, runDogi, type DogiConfig } from '@fetch/agent';
 import type { Column, Lead } from '@fetch/db';
 import { getLLM } from '@fetch/llm';
 import { Waterfall } from '@fetch/enrichment';
@@ -10,10 +10,11 @@ import { evaluateFormula, type FormulaConfig } from './formula';
  * the dynamic column engine — a column is a definition of *how a value gets
  * filled*, and this function executes that definition:
  *
- *   enrichment → provider waterfall, then the agent loop as a fallback
- *   agent      → the LLM tool-loop directly, driven by the column's prompt
+ *   dogi       → run the configurable Dogi (providers · web · scrape · LLM)
  *   formula    → derive from other columns (no network, no cost)
  *   manual     → never resolved here; a human types it (no job)
+ *   enrichment → (legacy) provider waterfall, then the agent loop as a fallback
+ *   agent      → (legacy) the LLM tool-loop directly, driven by the prompt
  */
 
 export interface ResolvedCell {
@@ -23,18 +24,51 @@ export interface ResolvedCell {
   provider: string;
 }
 
+/** Per-run context threaded through resolution (e.g. a BYOK key). */
+export interface ResolveContext {
+  /** BYOK key for this run; never persisted or logged. */
+  apiKey?: string;
+}
+
+/**
+ * The output key a column writes to. A Dogi whose `config.output.mode === 'map'`
+ * (or 'create') points at a specific key; otherwise the cell IS its column.
+ */
+export function outputKeyOf(column: Column): string {
+  const config = (column.config as Record<string, any>) ?? {};
+  return config.output?.key ?? column.key;
+}
+
 export async function resolveCell(
   lead: Lead,
   column: Column,
-  waterfall?: Waterfall,
+  ctx?: ResolveContext,
 ): Promise<ResolvedCell | null> {
   const config = (column.config as Record<string, any>) ?? {};
   const log = logger.child({ lead_id: lead.id, column: column.key });
 
   switch (column.type) {
+    case 'dogi': {
+      const dogiConfig: DogiConfig = {
+        instruction: config.instruction ?? '',
+        reads: config.reads,
+        sources: config.sources,
+        policy: config.policy,
+        brain: config.brain,
+        maxSteps: config.maxSteps,
+      };
+      const res = await runDogi(dogiConfig, {
+        field: outputKeyOf(column),
+        lead,
+        apiKey: ctx?.apiKey,
+      });
+      if (!res) return null;
+      return { value: res.value, confidence: res.confidence, source: res.source, provider: res.provider };
+    }
+
     case 'enrichment': {
       const field = config.field ?? column.key;
-      const wf = waterfall ?? new Waterfall();
+      const wf = new Waterfall();
       const hit = await wf.run(field, lead);
       if (hit) {
         return { value: hit.value, confidence: hit.confidence, source: hit.source, provider: hit.provider };

@@ -12,6 +12,7 @@
   "dependencies": {
     "@fetch/core": "workspace:*",
     "@fetch/db": "workspace:*",
+    "@fetch/enrichment": "workspace:*",
     "@fetch/llm": "workspace:*"
   },
   "devDependencies": {

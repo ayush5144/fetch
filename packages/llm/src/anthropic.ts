@@ -37,13 +37,17 @@ export class AnthropicClient implements LLMClient {
       messages,
     };
     if (system) body.system = opts.json ? `${system}\nRespond with JSON only.` : system;
-    if (opts.tools?.length) {
-      body.tools = opts.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.inputSchema,
-      }));
+    const tools: Record<string, unknown>[] = (opts.tools ?? []).map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema,
+    }));
+    // Native web search: Anthropic's server-side tool. Results come back in the
+    // response content; we don't execute it ourselves.
+    if (opts.webSearch === 'native') {
+      tools.push({ type: 'web_search_20250305', name: 'web_search', max_uses: 3 });
     }
+    if (tools.length) body.tools = tools;
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

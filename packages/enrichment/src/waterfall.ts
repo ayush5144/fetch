@@ -18,6 +18,31 @@ export interface WaterfallResult extends ProviderResult {
   provider: string;
 }
 
+/** The data providers Fetch knows how to build, keyed by their Dogi name. */
+const PROVIDER_REGISTRY: Record<string, () => Provider> = {
+  apollo: () => new ApolloProvider(),
+  hunter: () => new HunterProvider(),
+};
+
+/** Provider names Fetch can build (whether or not they have keys right now). */
+export function knownProviders(): string[] {
+  return Object.keys(PROVIDER_REGISTRY);
+}
+
+/**
+ * Build a Waterfall over a SINGLE named data provider — the Dogi `provider`
+ * source ("one data provider at a time for now"). Returns null when the name is
+ * unknown OR the provider has no credentials, so the caller can skip the source
+ * gracefully. Later we'll allow several ranked providers in one waterfall.
+ */
+export function singleProviderWaterfall(name: string): Waterfall | null {
+  const make = PROVIDER_REGISTRY[name];
+  if (!make) return null;
+  const provider = make();
+  if ('available' in provider && !(provider as ConfigurableProvider).available) return null;
+  return new Waterfall([provider]);
+}
+
 export class Waterfall {
   private readonly providers: Provider[];
   private readonly cache = new Map<string, WaterfallResult | null>();

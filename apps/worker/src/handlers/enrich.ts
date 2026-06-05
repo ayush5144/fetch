@@ -21,7 +21,9 @@ export async function enrichHandler(data: EnrichJobData): Promise<void> {
 
   await db.update(leads).set({ enrichmentStatus: 'running' }).where(eq(leads.id, data.leadId));
 
-  const filled = await runCell(data.leadId, data.columnKey);
+  // BYOK key, if the run carries one, is threaded to the column resolver for
+  // this job only. It is never logged or persisted.
+  const filled = await runCell(data.leadId, data.columnKey, { apiKey: data.apiKey });
 
   await db
     .update(leads)

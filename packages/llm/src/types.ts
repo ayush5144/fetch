@@ -44,6 +44,14 @@ export interface ChatOptions {
   json?: boolean;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Attach the provider's OWN web-search tool so the model can search the web
+   * itself ("native" web search source). Each client maps this to its vendor
+   * payload (Anthropic `web_search_20250305`, OpenAI/Grok `web_search`, Gemini
+   * `googleSearch`). When set, the model may answer from live search results
+   * without us running a separate Serper tool.
+   */
+  webSearch?: 'native';
 }
 
 export interface LLMClient {

@@ -2,7 +2,7 @@ import { columns as columnsTable, db, leads } from '@fetch/db';
 import type { Column, Lead } from '@fetch/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { isCellEmpty, writeCell } from './cell';
-import { resolveCell } from './resolve';
+import { outputKeyOf, resolveCell, type ResolveContext } from './resolve';
 
 /**
  * The run-column engine. "Running a column" = firing its job across rows.
@@ -62,16 +62,21 @@ export async function planRun(
  * from the lead, so callers only need (leadId, columnKey). Returns whether a
  * value was written.
  */
-export async function runCell(leadId: string, columnKey: string): Promise<boolean> {
+export async function runCell(
+  leadId: string,
+  columnKey: string,
+  ctx?: ResolveContext,
+): Promise<boolean> {
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
   if (!lead) return false;
   const column = await getColumn(lead.tableId, columnKey);
   if (!column) return false;
 
-  const resolved = await resolveCell(lead, column);
+  const resolved = await resolveCell(lead, column, ctx);
   if (!resolved) return false;
 
-  await writeCell(leadId, columnKey, resolved);
+  // A Dogi whose output is mapped/created writes to that key; default = its own.
+  await writeCell(leadId, outputKeyOf(column), resolved);
   return true;
 }
 

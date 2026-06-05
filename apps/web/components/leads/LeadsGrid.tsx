@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type Column, type Lead, type CellJob } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
+import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
 import { CellPeek } from './CellPeek';
 import { ImportModal } from './ImportModal';
@@ -138,6 +139,10 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   // ── Edit column (reopen popover with existing config)
   const [editColPopover, setEditColPopover] = useState<{ col: Column; rect: DOMRect } | null>(null);
 
+  // ── BYOK API keys — in-memory only, never persisted
+  // Maps columnId → apiKey string
+  const [byokKeys, setByokKeys] = useState<Record<string, string>>({});
+
   // ── Cell peek panel
   const [peek, setPeek] = useState<{ lead: Lead; col: Column } | null>(null);
 
@@ -246,7 +251,17 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
 
   async function runCell(lead: Lead, col: Column) {
     try {
-      await api.post(`/leads/${lead.id}/run/${col.key}`);
+      const isByok = col.config?.brain?.keySource === 'byok';
+      const apiKey = isByok ? byokKeys[col.id] : undefined;
+      // Prompt for the key if it's BYOK but not yet set
+      if (isByok && !apiKey) {
+        const entered = window.prompt(`Enter your ${col.config?.brain?.provider ?? 'AI'} API key for "${col.label}" (session only, never saved):`);
+        if (!entered) return;
+        setByokKeys((prev) => ({ ...prev, [col.id]: entered }));
+        await api.post(`/leads/${lead.id}/run/${col.key}`, { apiKey: entered });
+      } else {
+        await api.post(`/leads/${lead.id}/run/${col.key}`, apiKey ? { apiKey } : undefined);
+      }
       setTimeout(onRefreshLeads, 500);
     } catch (e) {
       console.error('run cell failed', e);
@@ -256,7 +271,17 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   async function runColumn(col: Column) {
     const leadIds = selected.size > 0 ? [...selected] : leads.map((l) => l.id);
     try {
-      await api.post(`/tables/${tableId}/columns/${col.key}/run`, { leadIds });
+      const isByok = col.config?.brain?.keySource === 'byok';
+      const apiKey = isByok ? byokKeys[col.id] : undefined;
+      // Prompt for the key if it's BYOK but not yet set
+      if (isByok && !apiKey) {
+        const entered = window.prompt(`Enter your ${col.config?.brain?.provider ?? 'AI'} API key for "${col.label}" (session only, never saved):`);
+        if (!entered) return;
+        setByokKeys((prev) => ({ ...prev, [col.id]: entered }));
+        await api.post(`/tables/${tableId}/columns/${col.key}/run`, { leadIds, apiKey: entered });
+      } else {
+        await api.post(`/tables/${tableId}/columns/${col.key}/run`, { leadIds, ...(apiKey ? { apiKey } : {}) });
+      }
       setTimeout(onRefreshLeads, 500);
     } catch (e) {
       console.error('run column failed', e);
@@ -294,7 +319,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   }
   const insertPositionRef = useRef<number | null>(null);
 
-  async function submitNewColumn(payload: { key: string; label: string; type: string; config: Record<string, unknown> }) {
+  async function submitNewColumn(payload: ColumnPayload) {
     const body: Record<string, unknown> = {
       key: payload.key,
       label: payload.label,
@@ -306,6 +331,14 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
       insertPositionRef.current = null;
     }
     await api.post(`/tables/${tableId}/columns`, body);
+    onRefreshColumns();
+  }
+
+  async function editColumnConfig(
+    columnId: string,
+    patch: { label: string; config: Record<string, unknown> },
+  ) {
+    await api.patch(`/columns/${columnId}`, patch);
     onRefreshColumns();
   }
 
@@ -813,13 +846,15 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
         </>
       )}
 
-      {/* Edit column popover — reuses AddColumnPopover */}
+      {/* Edit column popover — pre-populated from existing column */}
       {editColPopover && (
         <AddColumnPopover
           anchorRect={editColPopover.rect}
           tableId={tableId}
-          availableColumns={availableColumns}
+          availableColumns={availableColumns.filter((c) => c.key !== editColPopover.col.key)}
+          editColumn={editColPopover.col}
           onSubmit={submitNewColumn}
+          onEdit={editColumnConfig}
           onClose={() => setEditColPopover(null)}
         />
       )}
