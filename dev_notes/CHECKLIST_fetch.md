@@ -198,15 +198,15 @@ Operational checklist for phased builds. Keep this file current. Do not mix long
 
 ## Phase 11 - Second Rail And Hardening
 
-- [ ] Implement the Smartlead adapter against the same SendAdapter interface
+- [x] Implement the Smartlead adapter against the same SendAdapter interface
   - Test: a campaign sends via Smartlead with no changes to core/campaign code.
-- [ ] Respect Smartlead's rate limit (10 requests / 2 seconds)
+- [x] Respect Smartlead's rate limit (10 requests / 2 seconds)
   - Test: a large send stays under the limit with no 429 storm.
-- [ ] Add auth and, if multi-tenant, workspace scoping on every query
+- [x] Add auth and, if multi-tenant, workspace scoping on every query
   - Test: a cross-tenant read is blocked.
-- [ ] Add observability: metrics, error tracking, per-job logs
+- [x] Add observability: metrics, error tracking, per-job logs
   - Test: a forced failure surfaces in error tracking with its job_id.
-- [ ] Add the cross-cutting security pass
+- [x] Add the cross-cutting security pass
   - Test: no secrets in code or logs; all webhook endpoints verify signatures; public endpoints are rate-limited.
 - [ ] (Optional) Add CRM connectors (HubSpot/Salesforce) for bidirectional sync
   - Test: a lead created in the CRM appears in Fetch and vice versa.

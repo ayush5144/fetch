@@ -1,6 +1,13 @@
 import type { Campaign, EventType, Lead } from '@fetch/db';
-import { getEnv, logger } from '@fetch/core';
+import { getEnv, logger, RateLimiter } from '@fetch/core';
 import { batch, type ParsedEvent, type PushResult, type SendAdapter } from './adapter';
+
+/**
+ * Process-wide limiter for Smartlead's documented cap of 10 requests / 2s.
+ * Shared across every adapter instance so the whole worker stays under the
+ * budget no matter how many sends run.
+ */
+const smartleadLimiter = new RateLimiter(10, 2_000);
 
 /** Smartlead's event names → our internal vocabulary. */
 const SMARTLEAD_EVENT_MAP: Record<string, EventType> = {
@@ -43,6 +50,8 @@ export class SmartleadAdapter implements SendAdapter {
     // Smartlead's add-to-campaign endpoint; chunk conservatively. The provider
     // rate limit (10 req / 2s) is respected by the worker's pacing.
     for (const chunk of batch(leads, 100)) {
+      // Pace each request to respect the provider's 10 req / 2s limit.
+      await smartleadLimiter.acquire();
       const url = `${SmartleadAdapter.BASE}/campaigns/${campaign.providerRef}/leads?api_key=${this.apiKey}`;
       const body = {
         lead_list: chunk.map((l) => ({

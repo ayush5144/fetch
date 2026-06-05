@@ -15,6 +15,10 @@ const schema = z.object({
   NEXT_PUBLIC_API_URL: z.string().default('http://localhost:4000'),
   WORKER_CONCURRENCY: z.coerce.number().default(4),
 
+  // Optional API bearer token. When unset the API is open (single-tenant
+  // self-host default); when set, data routes require it.
+  FETCH_API_TOKEN: z.string().optional(),
+
   LLM_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
   LLM_MODEL: z.string().default('claude-opus-4-8'),
   ANTHROPIC_API_KEY: z.string().optional(),

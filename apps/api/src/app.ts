@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
+import { auth } from './middleware/auth';
 import { rateLimit } from './middleware/rateLimit';
 import { accountsRoutes } from './routes/accounts';
 import { analyticsRoutes } from './routes/analytics';
@@ -21,6 +22,9 @@ export const app = new Hono();
 
 app.use('*', honoLogger());
 app.use('*', cors());
+// Optional bearer auth (no-op unless FETCH_API_TOKEN is set); exempts
+// /health and /webhooks/* internally.
+app.use('*', auth());
 
 // Rate-limit the public surface (webhooks + imports) to blunt abuse.
 app.use('/webhooks/*', rateLimit({ windowMs: 60_000, max: 120 }));
