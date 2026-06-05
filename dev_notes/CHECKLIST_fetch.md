@@ -177,23 +177,23 @@ Operational checklist for phased builds. Keep this file current. Do not mix long
 
 ## Phase 10 - Web UI (Table-First Workspace)
 
-- [ ] Build the lead table: filter, sort, inline edit, run-cell, run-column
+- [x] Build the lead table: filter, sort, inline edit, run-cell, run-column
   - Test: an operator triggers enrichment per row, per filter, and for the whole table.
-- [ ] Show value, confidence, and source link per cell
+- [x] Show value, confidence, and source link per cell
   - Test: a cell tooltip/expander shows confidence and a working source link.
-- [ ] Build the account view with company context and linked leads
+- [x] Build the account view with company context and linked leads
   - Test: an account page lists every lead attached to its domain.
-- [ ] Build the campaign builder: template, rules, provider selection
+- [x] Build the campaign builder: template, rules, provider selection
   - Test: launching a campaign enqueues sends only for eligible leads.
-- [ ] Build the prompt editor with versions and guardrails
+- [x] Build the prompt editor with versions and guardrails
   - Test: editing a prompt creates a new version without overwriting approved copy.
-- [ ] Build the job monitor view
+- [x] Build the job monitor view
   - Test: job status, errors, retries, and dead-letter reflect real worker state.
-- [ ] Build the reply inbox from events
+- [x] Build the reply inbox from events
   - Test: replies, bounces, and unsubscribes appear as they arrive.
-- [ ] Build analytics: deliverability, engagement, conversion per campaign
+- [x] Build analytics: deliverability, engagement, conversion per campaign
   - Test: analytics numbers match the events table.
-- [ ] Make the table live without manual refresh
+- [x] Make the table live without manual refresh
   - Test: a completed job or inbound event updates the visible row automatically.
 
 ## Phase 11 - Second Rail And Hardening
@@ -213,26 +213,26 @@ Operational checklist for phased builds. Keep this file current. Do not mix long
 
 ## Phase 12 - Deployment And Self-Host
 
-- [ ] Write self-host docs with a one-command bring-up
+- [x] Write self-host docs with a one-command bring-up
   - Test: a fresh machine reaches a working instance from the README alone.
-- [ ] Add a production env template
+- [x] Add a production env template
   - Test: required env names match the app code exactly.
-- [ ] Add a deploy script: pull, install, build, migrate, restart
+- [x] Add a deploy script: pull, install, build, migrate, restart
   - Test: the deploy script exits 0 on a clean host.
-- [ ] Add a daily `pg_dump` backup script and a tested restore
+- [x] Add a daily `pg_dump` backup script and a tested restore
   - Test: backup → wipe → restore recovers all leads and events intact.
-- [ ] Add uptime and error monitoring
+- [x] Add uptime and error monitoring
   - Test: the monitor alerts on downtime and a test error appears in tracking.
 
 ## Ship Gate (MVP)
 
-- [ ] CSV → canonical lead with no duplicates
-- [ ] User can add a column and run it across rows
-- [ ] Enrichment fills cells with confidence + source (waterfall + agent)
-- [ ] Validation gates sending
-- [ ] Personalized copy is previewable and approvable
-- [ ] Approved leads send via Instantly
-- [ ] Replies/opens/bounces flow back into the same rows
-- [ ] The whole loop is operable from the UI
-- [ ] A second provider (Smartlead) works with no core changes
-- [ ] A stranger can self-host from the README
+- [x] CSV → canonical lead with no duplicates
+- [x] User can add a column and run it across rows
+- [x] Enrichment fills cells with confidence + source (waterfall + agent)
+- [x] Validation gates sending
+- [x] Personalized copy is previewable and approvable
+- [x] Approved leads send via Instantly
+- [x] Replies/opens/bounces flow back into the same rows
+- [x] The whole loop is operable from the UI
+- [x] A second provider (Smartlead) works with no core changes
+- [x] A stranger can self-host from the README
