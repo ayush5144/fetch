@@ -1,9 +1,16 @@
 # Dogi — the fetch agent 🐕
 
-**Fetch** is a dog that **fetches**. **Dogi** is the agent you send to get data.
-This doc is the working spec: what Dogi is, how it runs, how a user customizes it
-(simple and advanced), how it can **create columns and chain a goal**, and how it
-maps onto the code we already have.
+**Fetch** is a dog that **fetches**. **Dogi** (a.k.a. **Doggi**) is the agent you
+send to get data. This doc is the working spec: what Dogi is, how it runs, how a
+user customizes it (simple and advanced), how it can **create columns and chain a
+goal**, and how it maps onto the code we already have.
+
+> **Where this sits in the bigger picture:** Dogi is the **cell primitive** — it
+> fills *one field for one row*. The autonomous agent that *creates rows*, builds
+> columns, and orchestrates a whole goal on top of Dogi is **Doggo**. The
+> two-agent split (and why the "create columns + chain a goal" part below is
+> really an early **Doggo**) is documented in
+> [doggo-and-doggi.md](./doggo-and-doggi.md) — read that for the architecture.
 
 ---
 

@@ -87,7 +87,11 @@ column stores numbers). The set is extensible — more value types later.
 ### Rows
 - **Select** (checkbox) → bulk actions: run a column over the selection, delete,
   move to another table.
-- **Row number** column on the left.
+- **Row number** column on the left (the **index**; the checkbox + index columns
+  are structural, always present — no preset *content* columns).
+- **A new table starts with one blank row** showing `1` in the index — so a fresh
+  table is never a dead end ("no rows yet"). The user types into it, or **Doggo**
+  fills/creates rows (see [doggo-and-doggi.md](./doggo-and-doggi.md)).
 - **Drag to reorder rows** (persisted order).
 - **`+ new lead`** at the bottom adds a blank row inline; fill cells directly.
 

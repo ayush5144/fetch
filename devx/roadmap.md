@@ -80,6 +80,53 @@ the grid is usable early and Dogi lands on top of it.
 
 ---
 
+## Phase I · Doggo — the autonomous orchestrator (next big direction)
+The cell agent (**Doggi**) only *enriches existing rows*; it cannot *create* them.
+A real prompt — *"list the top 10 companies, their CEOs, and LinkedIn profiles"* —
+created the right columns but **zero rows**, so nothing ran. Fix: a second,
+autonomous agent **Doggo** that can **source/create rows**, build & configure
+columns, pick the Doggi per column, and plan→run a whole goal. Defaults to
+**propose-a-plan** (toggle to "just do it"); its settings (and the default Doggi
+config it hands out) are configurable. Doggo uses Doggi as its hands and needs no
+MCP to function. Full design → [doggo-and-doggi.md](./doggo-and-doggi.md).
+
+---
+
+## Session findings & decisions — 2026-06-06 (review, not yet built)
+
+A review of the live product surfaced these. Logged here so the next build picks
+them up; full reasoning in [doggo-and-doggi.md](./doggo-and-doggi.md).
+
+**Problems found**
+- "Top 10 companies" prompt → 3 correct dogi columns but **0 rows**, nothing ran.
+  Root cause: the planner only adds columns "for every lead"; there is **no
+  row-creation** anywhere. → Doggo (Phase I).
+- New tables start with **0 rows** — an empty grid is a dead end ("no rows yet").
+- No obvious **loading state** while an agent works (the machinery exists:
+  `queued → running` cell states + `/cell-jobs` polling — just not loud).
+- Overview shows **cards**; we'd previously leaned **list**.
+- No **agent activity log** surface (though `audit_log` already records actions).
+
+**My take (agreed by the user) — small fixes**
+- New table seeds **one blank row** (index `1`); checkbox + index columns are
+  already structural — no preset content columns.
+- Make the **`running`** cell state visually obvious (spinner/pulse + a header
+  "Doggo working…" hint).
+- Add an **Agent activity log** view over `audit_log` (next to Jobs).
+- Overview **as a list**, not cards.
+
+**Investigated & cleared**
+- "Is the Doggi config modal only visual?" — **No.** Manually-created dogi columns
+  persist full config in Postgres; the form emits `brain`; `runDogi` consumes
+  `sources`/`policy`/`brain` (verified live). Not a bug.
+
+**Already shipped this session** (committed locally, see main checklist)
+- Doggi prompt split (research vs transform) — fixed LLM-only columns returning null.
+- Dedupe **existing** rows from the column `⋯` menu (+ backend + tests).
+- Nav restructure, **Agents** page, **Settings** (key-status) page, `✉→@`.
+
+---
+
 ## Explicitly deferred (still in the repo, not the focus now)
 Campaigns, Prompts (kept for personalization), Reply inbox, Analytics, standalone
 Accounts. The send/validate/event backend stays and keeps passing its tests.

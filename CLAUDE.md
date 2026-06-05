@@ -13,8 +13,10 @@ or ours. One canonical lead in Postgres; ingest → enrich → validate → pers
 - **Architecture (reference):** `dev_notes/ARCHITECTURE_fetch.md`, `dev_notes/PRD.md`,
   `dev_notes/WORKING.md`, and `docu.md` (as-built).
 - **Forward design (the new direction):** `devx/` — read these before building
-  Part II: `direction.md`, `dogi-agent.md`, `leads-grid.md`, `multi-table.md`,
-  `providers-and-keys.md`, `dedupe-and-accounts.md`, `mcp.md`, `roadmap.md`.
+  Part II: `direction.md`, `doggo-and-doggi.md` (the two-agent architecture —
+  **Doggi** cell primitive vs **Doggo** autonomous orchestrator), `dogi-agent.md`,
+  `leads-grid.md`, `multi-table.md`, `providers-and-keys.md`,
+  `dedupe-and-accounts.md`, `mcp.md`, `roadmap.md`.
 
 ## Stack
 
