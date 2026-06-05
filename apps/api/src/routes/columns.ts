@@ -72,6 +72,11 @@ columnsRoutes.patch('/:id', async (c) => {
 /** Delete a column definition. Existing values stay in leads.data untouched. */
 columnsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
+  const existing = await db.query.columns.findFirst({ where: eq(columnsTable.id, id) });
+  if (!existing) return c.json({ error: 'not found' }, 404);
+  if ((existing.config as { protected?: boolean } | null)?.protected) {
+    return c.json({ error: 'this column cannot be deleted' }, 403);
+  }
   const [deleted] = await db.delete(columnsTable).where(eq(columnsTable.id, id)).returning();
   if (!deleted) return c.json({ error: 'not found' }, 404);
   await audit({ entity: 'column', entityId: id, action: 'delete', diff: { key: deleted.key } });

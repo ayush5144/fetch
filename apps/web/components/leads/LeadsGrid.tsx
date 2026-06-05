@@ -783,6 +783,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           columnKey={colMenu.col.key}
           columnLabel={colMenu.col.label}
           isRunnable={isRunnable(colMenu.col)}
+          isProtected={Boolean(colMenu.col.config?.protected)}
           onRun={() => runColumn(colMenu.col)}
           onEdit={() => {
             setEditColPopover({ col: colMenu.col, rect: colMenu.rect });
@@ -873,8 +874,9 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
       {showImport && (
         <ImportModal
           tableId={tableId}
+          columns={columns}
           onClose={() => setShowImport(false)}
-          onDone={onRefreshLeads}
+          onDone={() => { setShowImport(false); onRefreshLeads(); onRefreshColumns(); }}
         />
       )}
     </>

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { columns, db, prompts } from '@fetch/db';
 import { CsvNormalizer } from '@fetch/connectors';
-import { ensureDefaultTable, ingestLead } from '@fetch/core';
+import { ensureDefaultTable, ensureExampleTable, ingestLead } from '@fetch/core';
 import { sources } from '@fetch/db';
 
 /**
@@ -11,6 +11,9 @@ import { sources } from '@fetch/db';
  */
 async function main() {
   const tableId = await ensureDefaultTable();
+
+  console.log('[seed] ensuring the protected example table…');
+  await ensureExampleTable();
 
   console.log('[seed] inserting columns…');
   await db

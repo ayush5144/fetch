@@ -3,7 +3,15 @@ import { z } from 'zod';
 import { columns as columnsTable, db, jobs, leads, sources, tables } from '@fetch/db';
 import { audit, enqueue, ingestLead, listTablesWithCounts } from '@fetch/core';
 import { getColumn, planRun, runFormulaColumn } from '@fetch/columns';
-import { CsvNormalizer } from '@fetch/connectors';
+import {
+  CsvNormalizer,
+  identityFieldFor,
+  parseCsvRecords,
+  previewCsv,
+  recordToCanonicalWithMapping,
+  snakeCase,
+} from '@fetch/connectors';
+import type { ImportMapping } from '@fetch/connectors';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 /**
@@ -42,6 +50,11 @@ tablesRoutes.patch('/:id', async (c) => {
 
 tablesRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
+  const existing = await db.query.tables.findFirst({ where: eq(tables.id, id) });
+  if (!existing) return c.json({ error: 'not found' }, 404);
+  if ((existing.settings as { protected?: boolean } | null)?.protected) {
+    return c.json({ error: 'the example table cannot be deleted' }, 403);
+  }
   const [deleted] = await db.delete(tables).where(eq(tables.id, id)).returning();
   if (!deleted) return c.json({ error: 'not found' }, 404);
   await audit({ entity: 'table', entityId: id, action: 'delete', diff: { name: deleted.name } });
@@ -87,17 +100,97 @@ tablesRoutes.post('/:id/leads', async (c) => {
   return c.json({ lead, created }, created ? 201 : 200);
 });
 
-/** CSV import into a table. */
+/**
+ * Preview a CSV for the import-mapping step: parse the header row and the first
+ * data row so the UI can let the operator map each header to a column.
+ */
+tablesRoutes.post('/:id/import/preview', async (c) => {
+  const { csv } = z.object({ csv: z.string() }).parse(await c.req.json());
+  return c.json(previewCsv(csv));
+});
+
+const importMappingSchema = z
+  .object({
+    action: z.enum(['create', 'map', 'skip']),
+    key: z.string().optional(),
+    label: z.string().optional(),
+    type: z.string().optional(),
+    valueType: z.string().optional(),
+  })
+  .strict();
+
+const importSchema = z.object({
+  csv: z.string(),
+  mapping: z.record(importMappingSchema).optional(),
+});
+
+/**
+ * CSV import into a table.
+ *
+ * With no `mapping`, behaves as before: identity headers → system fields, and
+ * other headers flow into `leads.data` (a blank table auto-creates a column for
+ * each; a table with columns auto-maps matching headers and creates the rest).
+ *
+ * With a `mapping`, each non-identity header is `create`d (ensuring a column
+ * exists), `map`ped onto an existing column key, or `skip`ped. Identity headers
+ * always normalize to system fields. Dedupe, audit, and validation-enqueue are
+ * unchanged.
+ */
 tablesRoutes.post('/:id/leads/import', async (c) => {
   const tableId = c.req.param('id');
-  const { csv } = z.object({ csv: z.string() }).parse(await c.req.json());
+  const { csv, mapping: rawMapping } = importSchema.parse(await c.req.json());
   const [source] = await db.insert(sources).values({ type: 'csv', raw: { bytes: csv.length } }).returning();
 
-  const canonicalLeads = new CsvNormalizer().normalize(csv);
+  const records = parseCsvRecords(csv);
+  const headers = Object.keys(records[0] ?? {}).map((h) => h.trim());
+  const nonIdentity = headers.filter((h) => !identityFieldFor(h));
+
+  // Existing user columns in this table, by key and by label (for auto-mapping).
+  const existingCols = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const byKey = new Map(existingCols.map((c) => [c.key, c]));
+  const byLabel = new Map(existingCols.map((c) => [c.label.toLowerCase(), c]));
+
+  // Build the effective mapping. When none is supplied, derive it from the
+  // table's current shape (blank → create all; populated → map matches, create
+  // the rest) to preserve the prior no-mapping behavior.
+  const mapping: ImportMapping = {};
+  if (rawMapping) {
+    Object.assign(mapping, rawMapping);
+  } else {
+    for (const header of nonIdentity) {
+      const match = byKey.get(header) ?? byLabel.get(header.toLowerCase());
+      mapping[header] = match
+        ? { action: 'map', key: match.key }
+        : { action: 'create', label: header };
+    }
+  }
+
+  // Ensure a column definition exists for every `create` header (idempotent).
+  for (const header of nonIdentity) {
+    const m = mapping[header];
+    if (!m || m.action !== 'create') continue;
+    const key = (m.key && m.key.trim()) || snakeCase(header);
+    if (byKey.has(key)) continue; // already there → just write values into it
+    const label = m.label?.trim() || header;
+    const type = m.type?.trim() || 'manual';
+    const valueType = m.valueType?.trim() || 'text';
+    try {
+      const [created] = await db
+        .insert(columnsTable)
+        .values({ tableId, key, label, type, config: { valueType } })
+        .returning();
+      byKey.set(key, created!);
+      await audit({ entity: 'column', entityId: created!.id, action: 'create', diff: { key } });
+    } catch {
+      // A concurrent create or a label clash — the values still land in data[key].
+    }
+  }
+
   let imported = 0;
   let merged = 0;
-  for (const canonical of canonicalLeads) {
+  for (const record of records) {
     try {
+      const canonical = recordToCanonicalWithMapping(record, mapping);
       const { lead, created } = await ingestLead(canonical, { sourceId: source!.id, tableId, actor: 'user' });
       if (created) {
         imported++;
@@ -109,7 +202,7 @@ tablesRoutes.post('/:id/leads/import', async (c) => {
       continue; // one bad row never sinks the import
     }
   }
-  return c.json({ imported, merged, total: canonicalLeads.length });
+  return c.json({ imported, merged, total: records.length });
 });
 
 // ── Columns within a table ────────────────────────────────────────────────────

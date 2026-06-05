@@ -3,12 +3,17 @@
 /**
  * Per-column ⋯ context menu.
  * Positioned near the trigger button; closes on backdrop click or Escape.
+ *
+ * When `isProtected` is true the Delete action is hidden (the column is a
+ * fixed column on the example/protected table and cannot be removed).
  */
 interface Props {
   anchorRect: DOMRect;
   columnKey: string;
   columnLabel: string;
   isRunnable: boolean;
+  /** When true the Delete option is hidden (protected column). */
+  isProtected?: boolean;
   onRun: () => void;
   onEdit: () => void;
   onRename: () => void;
@@ -22,6 +27,7 @@ interface Props {
 export function ColumnMenu({
   anchorRect,
   isRunnable,
+  isProtected,
   onRun,
   onEdit,
   onRename,
@@ -66,10 +72,14 @@ export function ColumnMenu({
         <button className="col-menu-item" onClick={handle(onInsertRight)}>
           <span>→</span> Insert right
         </button>
-        <div className="col-menu-sep" />
-        <button className="col-menu-item danger" onClick={handle(onDelete)}>
-          <span>🗑</span> Delete column
-        </button>
+        {!isProtected && (
+          <>
+            <div className="col-menu-sep" />
+            <button className="col-menu-item danger" onClick={handle(onDelete)}>
+              <span>🗑</span> Delete column
+            </button>
+          </>
+        )}
       </div>
     </>
   );

@@ -30,3 +30,25 @@ export function readCsvHeaders(raw: string): string[] {
   const rows = parse(raw, { to_line: 1, trim: true }) as string[][];
   return rows[0] ?? [];
 }
+
+/** Parse a CSV into raw header→value records (no canonicalization). */
+export function parseCsvRecords(raw: string): Record<string, string>[] {
+  return parse(raw, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    relax_column_count: true,
+  }) as Record<string, string>[];
+}
+
+/**
+ * Preview a CSV for the import-mapping step: the header row plus the first data
+ * row keyed by header (so the UI can show an example value per column).
+ */
+export function previewCsv(raw: string): { headers: string[]; sample: Record<string, string> } {
+  const headers = readCsvHeaders(raw);
+  const [first] = parseCsvRecords(raw);
+  const sample: Record<string, string> = {};
+  for (const h of headers) sample[h] = first?.[h] ?? '';
+  return { headers, sample };
+}

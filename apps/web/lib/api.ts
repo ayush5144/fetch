@@ -108,7 +108,7 @@ export interface Column {
   key: string;
   label: string;
   type: 'enrichment' | 'agent' | 'formula' | 'manual' | 'dogi';
-  config: ColumnConfig;
+  config: ColumnConfig & { protected?: boolean };
   /** display order position */
   position?: number;
   /** column width in pixels */
@@ -149,4 +149,5 @@ export interface Table {
   leadCount: number;
   columnCount: number;
   createdAt: string;
+  settings?: { protected?: boolean };
 }

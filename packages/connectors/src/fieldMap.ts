@@ -20,6 +20,60 @@ export type CanonicalField =
 /** A header→field mapping. Headers not present here flow into `data`. */
 export type HeaderMap = Record<string, CanonicalField>;
 
+/** How one CSV header is handled by the import-mapping flow. */
+export interface ImportColumnMapping {
+  /** create a new column · map onto an existing column · ignore this header. */
+  action: 'create' | 'map' | 'skip';
+  /** Target leads.data key (create/map). Defaults to snake_case(header) on create. */
+  key?: string;
+  /** Display label for a created column. */
+  label?: string;
+  /** Fill method for a created column ('manual' default). */
+  type?: string;
+  /** Value type for a created column ('text' default), stored in config.valueType. */
+  valueType?: string;
+}
+
+/** header → mapping decision, from the import UI. */
+export type ImportMapping = Record<string, ImportColumnMapping>;
+
+/**
+ * Turn one raw CSV record into a CanonicalLead under an explicit import mapping.
+ * Identity headers (email/name/company/domain/…) always normalize to system
+ * fields. Non-identity headers follow their mapping: `create`/`map` write the
+ * value into `data[key]`, `skip` drops it. The column DEFINITIONS for `create`
+ * are ensured by the caller; this only places values.
+ */
+export function recordToCanonicalWithMapping(
+  record: Record<string, string>,
+  mapping: ImportMapping,
+): CanonicalLead {
+  const identity: Record<string, string> = {};
+  const data: Record<string, unknown> = {};
+
+  for (const [rawHeader, rawValue] of Object.entries(record)) {
+    const value = (rawValue ?? '').trim();
+    if (!value) continue;
+    const header = rawHeader.trim();
+
+    // Identity headers always go to system fields, regardless of the mapping.
+    if (identityFieldFor(header)) {
+      identity[header] = value;
+      continue;
+    }
+
+    const m = mapping[header];
+    if (!m || m.action === 'skip') continue;
+    const key = (m.key && m.key.trim()) || snakeCase(header);
+    data[key] = value;
+  }
+
+  // Reuse the alias-based mapper for the identity subset, then overlay data.
+  const lead = mapRecord(identity);
+  lead.data = { ...(lead.data ?? {}), ...data };
+  return lead;
+}
+
 /** Common header aliases, so a plain CSV maps sensibly with no config. */
 const DEFAULT_ALIASES: Record<string, CanonicalField> = {
   'first name': 'firstName',
@@ -52,6 +106,27 @@ const DEFAULT_ALIASES: Record<string, CanonicalField> = {
   company_domain: 'companyDomain',
   website: 'companyDomain',
 };
+
+/**
+ * Is this header a known identity field (email/name/company/domain/…)? Returns
+ * the canonical field it maps onto, or null. The import-mapping flow uses this to
+ * keep identity headers normalizing to system fields even when the operator maps
+ * other headers to user columns.
+ */
+export function identityFieldFor(header: string): CanonicalField | null {
+  return DEFAULT_ALIASES[header.trim().toLowerCase()] ?? null;
+}
+
+/** snake_case a free-text header into a safe column key (a-z, 0-9, _). */
+export function snakeCase(header: string): string {
+  return (
+    header
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'column'
+  );
+}
 
 /** Best-effort domain extraction from a website/email-ish value. */
 function toDomain(value: string): string | null {

@@ -141,3 +141,20 @@ accessible. Decide the exact lib at build time.
 
 Keep the design tokens in `apps/web/app/globals.css` (navy ink + coral accent);
 the grid stays on-brand and consistent.
+
+---
+
+## 5. Import mapping, spacing & the example table (Phase B.1)
+
+- **Import CSV with column mapping.** Choosing a file shows its headers; the
+  operator maps each header to an **existing column** or **creates a new** one
+  (with a value type). A **blank table auto-creates** every header as a new
+  column. Known identity headers (name/email/company) still map to system fields.
+- **Spacing.** Cells and rows carry comfortable padding — not corner-to-corner —
+  so the grid reads cleanly. (Tune the `.grid-cell` / `.grid-tbl` tokens.)
+- **The "Fetch table" example.** Overview seeds one example table named **Fetch
+  table** that is **protected**: it cannot be deleted, and its **fixed columns
+  cannot be deleted** (delete returns 403; the UI hides those actions).
+  Protection applies ONLY to this example table — every other table and column
+  behaves normally (add, edit, run, delete). Protection is flagged via
+  `tables.settings.protected` and `columns.config.protected`.

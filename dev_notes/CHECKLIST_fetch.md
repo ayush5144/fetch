@@ -395,3 +395,15 @@ only; build after sign-off. Every phase ends with
 - No secrets in code or logs; BYOK keys never persisted; webhooks signed; public endpoints rate-limited.
 - Two columns in a table never share a name; column value types are validated on edit.
 - `pnpm typecheck && pnpm lint && pnpm test` stay green per phase.
+
+## Phase B.1 - Fixes & Polish (grid, import mapping, example table)
+
+- [x] Fix Next.js runtime error (`__webpack_modules__` / missing chunk): pin `outputFileTracingRoot` so a stray parent lockfile can't hijack the workspace root; clear stale `.next`.
+  - Test: `pnpm dev:web` boots with no "inferred workspace root" warning; `/` and `/leads` render with no webpack error.
+- [x] Import CSV → column-mapping step: after choosing a file, show its headers and let the user **map each header to an existing column or create a new one** (with a type), then import. A **blank table auto-creates** all headers as new columns.
+  - Test: importing into a table with existing columns maps onto them; importing into a blank table creates the columns; values land in the right cells.
+- [x] Grid spacing: cells and rows have breathing room (padding), not corner-to-corner.
+  - Test: visual — cells have comfortable padding; the grid reads cleanly.
+- [x] Seeded example **"Fetch table"**: a non-deletable example table whose **fixed columns are also non-deletable** (protection applies ONLY to this example table). Everything else (add rows/columns, run, edit) works normally.
+  - Test: DELETE on the example table → 403; DELETE on a fixed column → 403; the UI hides those delete actions; a normal table/column deletes fine.
+

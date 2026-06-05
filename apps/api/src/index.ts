@@ -1,6 +1,6 @@
 import './load-env'; // MUST be first — loads .env before any DB/env access.
 import { serve } from '@hono/node-server';
-import { getEnv, logger, startQueues, stopQueues } from '@fetch/core';
+import { ensureExampleTable, getEnv, logger, startQueues, stopQueues } from '@fetch/core';
 import { closeDb } from '@fetch/db';
 import { app } from './app';
 
@@ -14,6 +14,14 @@ async function main() {
 
   // Connect to the in-Postgres queue so routes can enqueue jobs.
   await startQueues();
+
+  // Seed the protected example table once on boot. Non-fatal: a fresh DB without
+  // migrations, or a transient error, must never stop the API from listening.
+  try {
+    await ensureExampleTable();
+  } catch (err) {
+    logger.warn('ensureExampleTable failed (continuing)', { err: String(err) });
+  }
 
   const server = serve({ fetch: app.fetch, port: env.API_PORT }, (info) => {
     logger.info('api listening', { port: info.port });

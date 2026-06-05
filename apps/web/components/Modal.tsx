@@ -6,15 +6,22 @@ export function Modal({
   onClose,
   children,
   footer,
+  maxWidth,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** Override the default max-width (520px). */
+  maxWidth?: number | string;
 }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        style={maxWidth !== undefined ? { maxWidth } : undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="card-head">
           <h3>{title}</h3>
           <span className="muted" style={{ cursor: 'pointer', fontSize: 18 }} onClick={onClose}>

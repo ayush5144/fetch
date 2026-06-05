@@ -609,6 +609,14 @@ table.grid-tbl {
   table-layout: fixed;
 }
 
+/* Comfortable grid row height */
+:root {
+  --grid-row-h: 42px;
+  --grid-th-h: 40px;
+  --grid-cell-px: 13px;
+  --grid-cell-py: 9px;
+}
+
 /* Column sizes */
 .grid-col-check {
   width: 40px;
@@ -653,8 +661,8 @@ table.grid-tbl {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 0 8px;
-  height: 36px;
+  padding: 0 var(--grid-cell-px);
+  height: var(--grid-th-h);
   position: relative;
 }
 .grid-th-icon {
@@ -730,7 +738,7 @@ table.grid-tbl {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 36px;
+  height: var(--grid-th-h);
   font-size: 16px;
   color: var(--muted);
   cursor: pointer;
@@ -749,7 +757,7 @@ table.grid-tbl {
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
   padding: 0;
-  height: 36px;
+  height: var(--grid-row-h);
   vertical-align: middle;
   position: relative;
   background: var(--bg);
@@ -790,14 +798,14 @@ table.grid-tbl {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 36px;
+  height: var(--grid-row-h);
 }
 .grid-cell-num {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   padding-right: 10px;
-  height: 36px;
+  height: var(--grid-row-h);
   font-size: 12px;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
@@ -807,12 +815,12 @@ table.grid-tbl {
   cursor: grabbing;
 }
 
-/* Data cells */
+/* Data cells — comfortable padding, not corner-to-corner */
 .grid-cell {
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  height: 36px;
+  padding: var(--grid-cell-py) var(--grid-cell-px);
+  min-height: var(--grid-row-h);
   gap: 6px;
   cursor: text;
   min-width: 0;
@@ -934,7 +942,7 @@ table.grid-tbl {
   align-items: center;
   gap: 6px;
   padding: 0 10px 0 84px;
-  height: 36px;
+  height: var(--grid-row-h);
   border-top: 1px solid var(--border);
   cursor: pointer;
   color: var(--muted);
@@ -1105,4 +1113,94 @@ table.grid-tbl {
   font-size: 14px;
   color: var(--ink);
   word-break: break-word;
+}
+
+/* ── CSV import mapping (step 2) ────────────────────────────────────────────*/
+.import-step2 {
+  min-width: 0;
+}
+.import-map-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-size: 12px;
+}
+.import-map-header {
+  display: grid;
+  grid-template-columns: 140px 1fr 140px 1fr;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.import-map-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 140px 1fr;
+  gap: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  gap: 10px;
+  transition: background 0.1s ease;
+}
+.import-map-row:last-child {
+  border-bottom: none;
+}
+.import-map-row:hover {
+  background: var(--surface);
+}
+.import-map-row-skipped {
+  opacity: 0.45;
+}
+.import-map-col-csv,
+.import-map-col-sample,
+.import-map-col-action,
+.import-map-col-detail {
+  min-width: 0;
+  overflow: hidden;
+}
+.import-map-header-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Table card menu button ─────────────────────────────────────────────────*/
+.table-card-menu-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+  padding: 4px 7px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.card:hover .table-card-menu-btn {
+  opacity: 1;
+}
+.table-card-menu-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
 }
