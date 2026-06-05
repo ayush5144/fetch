@@ -380,6 +380,56 @@ only; build after sign-off. Every phase ends with
 - [x] Verified Dogi end-to-end against a real OpenAI key through API → pg-boss → worker → Postgres.
 - [x] **Fix:** split the agent system prompt by execution shape — `SYSTEM_RESEARCH` (never-guess, for web/scrape/native) vs `SYSTEM_TRANSFORM` (produce a value, for LLM-only). The single research prompt had made every LLM-only column return `null`/failed. Documented in `devx/dogi-agent.md` §3/§12/§13.
 
+## Phase G.2 - Grid/UX fixes + Dogi/Doggo config & menu (from the 2026-06-06 review)
+
+Surfaced by operating the live product; full reasoning in `devx/doggo.md` + `devx/roadmap.md` §"Session findings".
+
+### G.2a — New table is never a dead end (default blank row)
+- [ ] Creating a table seeds **one blank lead row** (so the grid shows row `1`, not "no rows yet").
+  - Backend: `ensureDefaultTable`/table-create path inserts one empty lead for the new table; idempotent (don't double-seed).
+  - Frontend: an empty table still renders one editable blank row + the index column shows `1`.
+  - Decision (user): **no preset content columns** — only the structural checkbox + index columns. Just the blank row.
+  - Test: POST a new table → `GET /tables/:id/leads` returns 1 row; the grid shows an editable row 1.
+
+### G.2b — Visible loading state while an agent works
+- [ ] A cell in `queued`/`running` shows a **spinner/pulse** (not just a static dot); the machinery already exists (`/cell-jobs` polling, cell state machine).
+- [ ] A **header/toolbar indicator** ("Dogi working… N running") while any cell job for the table is in flight.
+  - Keep it on existing tokens; no layout shift between states.
+  - Test: run a Dogi column → cells visibly show running → resolve to filled; indicator appears then clears.
+
+### G.2c — Agent activity log
+- [ ] Backend: `GET /tables/:id/activity` (and/or global `GET /activity`) over `audit_log` — action, entity, field, actor, timestamp, provenance; paginated, newest first.
+- [ ] Frontend: an **Activity** view (next to Jobs) listing what the agents did (columns created, cells filled, dedupe, plans) with provenance.
+  - Reachable from the menu.
+  - Test: run a column + a dedupe → both appear in `/activity` with correct action + timestamps.
+
+### G.2d — Overview as a list (not cards)
+- [ ] Render the Overview tables as a **list** (rows: name, #rows, #cols, updated, ⋯ menu) instead of cards. Keep create-table + the per-row delete/rename menu. Consistent tokens.
+  - Test: Overview shows tables as a list; create/delete still work.
+
+### G.2e — Dogi & Doggo are configurable and menu-accessible
+- [ ] Confirm the **Dogi config modal** persists & drives runs (already verified — keep a regression test).
+- [ ] **Doggo settings** (its own + the default Dogi config it hands to columns it builds) are editable from a **Settings/Dogi** surface reachable in the menu.
+  - Test: change Doggo's default brain/provider → a new Doggo run uses it.
+
+## Phase I - Doggo: autonomous orchestrator + row-sourcing
+
+The headline gap: the planner only enriches existing rows; nothing **creates** rows. Doggo fixes it. Design: `devx/doggo.md`.
+
+- [ ] **Row-sourcing primitive** (backend): given a description + count, generate N entities and **insert N leads** into the table (with provenance + dedupe-aware so re-running doesn't duplicate).
+  - Test: "top 10 companies" → 10 leads created; re-run doesn't double them.
+- [ ] **Doggo planner** (promote the existing planner): decompose a goal into steps that are **row-sourcing** and/or **column** steps, ordered by `dependsOn`.
+  - Test: "top 10 companies, their CEOs, CEO LinkedIn" → plan = [source 10 rows] → [col CEO] → [col LinkedIn].
+- [ ] **Plan-then-approve by default**, with a **"just do it" toggle** for autonomous execution.
+  - `POST /tables/:id/doggo/plan` (propose) + `POST /tables/:id/doggo/run` (execute; `auto` flag skips approval).
+  - Test: default returns a plan without mutating; `auto:true` creates rows+columns and runs.
+- [ ] **Execute**: create rows → create columns → run Dogis in dependency order (reuse the dependency-ordered worker). Each cell carries provenance; every action audited.
+  - Test: end-to-end live "top N" goal fills a fresh table.
+- [ ] **Doggo settings** persisted (table-scoped and/or global default), incl. the default Dogi config it spawns.
+- [ ] **Frontend — Ask Doggo**: an entry on a table; shows the proposed plan; approve/edit; just-do-it toggle; progress while it runs; reachable from the menu.
+  - Test: ask a goal → see plan → approve → table fills with rows + enriched columns.
+- [ ] Guardrails: cost estimate + a row/column ceiling + confirm before large autonomous runs; sourced rows respect the table's dedupe.
+
 ## Phase H - MCP (Project-Wide, Optional, Off Critical Path)
 
 - [ ] Fetch MCP server (read-only first): expose `tables`, `schema`, `rows`, `lead`, `jobs` resources
