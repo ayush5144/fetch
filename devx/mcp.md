@@ -158,3 +158,37 @@ checklist Phase H.
   client auto-approve under a policy/budget?
 - BYOK over MCP: do we accept a caller-supplied key per call, or only server keys?
 - Hosted multi-tenant scoping model (deferred while self-host-first)?
+
+---
+
+## As built (v1) — `apps/mcp` (Phase H)
+
+Shipped the **Fetch MCP server** as an opt-in app (`@fetch/mcp`), a **thin
+adapter over the REST API** (stdio transport). It holds no business logic and
+never touches the DB — every call goes through the API, so auth, gates, dedupe,
+audit, and provenance are reused. Config: `FETCH_API_URL`
+(default `http://localhost:4000`), `FETCH_API_TOKEN` (optional bearer),
+`FETCH_MCP_READONLY` (**default `true`** — read-only unless explicitly `false`).
+
+**Resources (read):** `fetch://tables`, `fetch://table/{id}/schema`,
+`fetch://table/{id}/rows`, `fetch://lead/{id}`.
+
+**Read tools (always on):** `list_tables`, `get_table_schema`,
+`query_rows` (paginated, returns `enrichmentConf` provenance), `get_lead`,
+`get_job`, `recent_activity`.
+
+**Write tools (only when `FETCH_MCP_READONLY=false` — not even listed otherwise):**
+`create_table`, `create_column`, `add_leads`, `update_cell`, `run_column`,
+`run_cell` (async → job ids; poll `get_job`), `dedupe` (with a `preview` dry-run),
+`ask_doggo` (returns a plan, never auto-runs), `run_doggo` (the explicit commit),
+`estimate_cost`.
+
+Honored qualities (§3): same primitives as the UI/REST, async-native run tools,
+provenance in row/lead responses, human-in-the-loop (`ask_doggo` → `run_doggo`),
+pagination on `query_rows`, least-privilege (read-only default + optional bearer).
+
+**Deferred:** streamable-HTTP / remote transport (stdio only for now);
+validation + sending/campaign tools; live resource subscriptions (job-completion
+/ row-change updates); per-table scoped tokens; BYOK passthrough over MCP; the
+inbound MCP **client** direction (§5). Audit actor: the server sends an
+`x-fetch-actor: mcp` hint, but the API currently derives the actor itself.
