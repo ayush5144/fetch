@@ -430,6 +430,9 @@ export function ImportModal({
               {result.merged} merged (deduped)
             </span>
           </div>
+          <p className="muted" style={{ margin: '12px 0 0', fontSize: 12 }}>
+            Tip: dedupe rows anytime from a column&apos;s ⋯ menu.
+          </p>
         </div>
       )}
     </Modal>

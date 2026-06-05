@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, estimateCost, type Column, type Lead, type CellJob } from '@/lib/api';
+import { api, estimateCost, tablesApi, type Column, type Lead, type CellJob } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
 import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
 import { CellPeek } from './CellPeek';
 import { ImportModal } from './ImportModal';
 import { AskDogiModal } from './AskDogiModal';
+import { Modal } from '@/components/Modal';
 
 /**
  * Clay-style spreadsheet grid for a single table.
@@ -158,6 +159,11 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   // ── Ask Dogi modal
   const [showAskDogi, setShowAskDogi] = useState(false);
   const [dogiSuccessMsg, setDogiSuccessMsg] = useState<string | null>(null);
+
+  // ── Dedupe (Phase G) — confirm modal + result message
+  const [dedupe, setDedupe] = useState<{ col: Column; groups: number; rows: number } | null>(null);
+  const [dedupeBusy, setDedupeBusy] = useState(false);
+  const [dedupeMsg, setDedupeMsg] = useState<string | null>(null);
 
   // ── Column resize
   const resizeState = useRef<{
@@ -359,6 +365,47 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
       onRefreshColumns();
     } catch (e) {
       console.error('duplicate column failed', e);
+    }
+  }
+
+  /**
+   * Phase G — Dedupe rows by a column. First preview the count; if there are
+   * duplicates open a confirm modal, otherwise just show an inline "no
+   * duplicates" message.
+   */
+  async function startDedupe(col: Column) {
+    setDedupeMsg(null);
+    try {
+      const preview = await tablesApi.duplicates(tableId, [col.key]);
+      if (preview.groups === 0) {
+        setDedupeMsg('No duplicates in this column.');
+        setTimeout(() => setDedupeMsg(null), 5000);
+        return;
+      }
+      setDedupe({ col, groups: preview.groups, rows: preview.rows });
+    } catch (e) {
+      console.error('dedupe preview failed', e);
+      setDedupeMsg('Could not check for duplicates — please try again.');
+      setTimeout(() => setDedupeMsg(null), 5000);
+    }
+  }
+
+  async function confirmDedupe() {
+    if (!dedupe || dedupeBusy) return;
+    setDedupeBusy(true);
+    try {
+      const res = await tablesApi.dedupe(tableId, [dedupe.col.key]);
+      setDedupe(null);
+      setDedupeMsg(`Merged ${res.merged} duplicate row${res.merged !== 1 ? 's' : ''}`);
+      setTimeout(() => setDedupeMsg(null), 5000);
+      onRefreshLeads();
+    } catch (e) {
+      console.error('dedupe failed', e);
+      setDedupeMsg('Dedupe failed — please try again.');
+      setTimeout(() => setDedupeMsg(null), 5000);
+      setDedupe(null);
+    } finally {
+      setDedupeBusy(false);
     }
   }
 
@@ -628,6 +675,11 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
             {dogiSuccessMsg}
           </span>
         )}
+        {dedupeMsg && (
+          <span className="pill pill-muted" style={{ fontSize: 12 }}>
+            {dedupeMsg}
+          </span>
+        )}
         <button
           className="btn btn-accent btn-sm"
           onClick={() => { setDogiSuccessMsg(null); setShowAskDogi(true); }}
@@ -857,6 +909,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           isProtected={Boolean(colMenu.col.config?.protected)}
           onRun={() => runColumn(colMenu.col)}
           onTest5={isRunnable(colMenu.col) ? () => test5Column(colMenu.col) : undefined}
+          onDedupe={() => startDedupe(colMenu.col)}
           onEstimateCost={
             isRunnable(colMenu.col) && colMenu.col.config?.brain
               ? () => estimateColumnCost(colMenu.col)
@@ -955,6 +1008,41 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           onClose={() => setShowImport(false)}
           onDone={() => { setShowImport(false); onRefreshLeads(); onRefreshColumns(); }}
         />
+      )}
+
+      {/* Dedupe confirm modal (Phase G) */}
+      {dedupe && (
+        <Modal
+          title="Dedupe rows"
+          maxWidth={460}
+          onClose={() => { if (!dedupeBusy) setDedupe(null); }}
+          footer={
+            <>
+              <button
+                className="btn btn-ghost"
+                disabled={dedupeBusy}
+                onClick={() => setDedupe(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-accent"
+                disabled={dedupeBusy}
+                onClick={confirmDedupe}
+              >
+                {dedupeBusy ? 'Deduping…' : 'Dedupe'}
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-soft)' }}>
+            Found <strong>{dedupe.groups}</strong> duplicate value
+            {dedupe.groups !== 1 ? 's' : ''} across the column{' '}
+            <strong>‘{dedupe.col.label}’</strong>. Dedupe will merge{' '}
+            <strong>{dedupe.rows}</strong> row{dedupe.rows !== 1 ? 's' : ''} into their oldest
+            match (existing values are never overwritten). Continue?
+          </p>
+        </Modal>
       )}
 
       {/* Ask Dogi modal */}

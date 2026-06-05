@@ -25,6 +25,8 @@ interface Props {
   onRun: () => void;
   /** Phase E — run only the first 5 empty rows. */
   onTest5?: () => void;
+  /** Phase G — dedupe existing rows by this column's value. */
+  onDedupe?: () => void;
   /** Phase E — show a cost estimate inline (returns a formatted string like "≈ $0.12 for 50 rows"). */
   onEstimateCost?: () => Promise<string | null>;
   onEdit: () => void;
@@ -42,6 +44,7 @@ export function ColumnMenu({
   isProtected,
   onRun,
   onTest5,
+  onDedupe,
   onEstimateCost,
   onEdit,
   onRename,
@@ -110,6 +113,14 @@ export function ColumnMenu({
                 <span>$</span> {estimating ? 'Estimating…' : 'Estimate cost'}
               </button>
             )}
+            <div className="col-menu-sep" />
+          </>
+        )}
+        {onDedupe && (
+          <>
+            <button className="col-menu-item" onClick={handle(onDedupe)}>
+              <span>⧓</span> Dedupe rows by this column
+            </button>
             <div className="col-menu-sep" />
           </>
         )}

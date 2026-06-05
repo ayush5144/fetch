@@ -1,7 +1,13 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { columns as columnsTable, db, jobs, leads, sources, tables } from '@fetch/db';
-import { audit, enqueue, ingestLead, listTablesWithCounts } from '@fetch/core';
+import {
+  audit,
+  dedupeExistingRows,
+  enqueue,
+  ingestLead,
+  listTablesWithCounts,
+} from '@fetch/core';
 import { getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
 import { planGoal, type DogiPlanStep } from '@fetch/agent';
 import { getLLM } from '@fetch/llm';
@@ -257,6 +263,52 @@ tablesRoutes.post('/:id/leads/delete', async (c) => {
     await audit({ entity: 'lead', entityId: row.id, action: 'delete', diff: { email: row.email, tableId } });
   }
   return c.json({ deleted: deleted.length });
+});
+
+// ── Dedupe existing rows (Clay-style "Dedupe by this column") ──────────────────
+
+/**
+ * Preview a dedupe of rows ALREADY in this table by one or more key columns.
+ * `keys` is a comma-separated list of column keys. No mutation — returns the
+ * number of duplicate clusters (`groups`) and the rows that WOULD be merged away
+ * (`rows`). 404 if the table is unknown; empty/missing `keys` → groups/rows 0.
+ */
+tablesRoutes.get('/:id/duplicates', async (c) => {
+  const tableId = c.req.param('id');
+  const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  if (!table) return c.json({ error: 'not found' }, 404);
+
+  const keys = (c.req.query('keys') ?? '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+
+  const { groups, rows } = await dedupeExistingRows(tableId, keys, { dryRun: true });
+  return c.json({ keys, groups, rows });
+});
+
+const dedupeRowsSchema = z.object({ keys: z.array(z.string().min(1)).min(1) });
+
+/**
+ * Dedupe rows ALREADY in this table by `keys`: in each cluster keep the oldest
+ * row, fill its empty fields from the dupes (never clobbering), then delete the
+ * dupes. Audited and idempotent (a second run merges 0). 400 on empty `keys`;
+ * 404 if the table is unknown.
+ */
+tablesRoutes.post('/:id/dedupe', async (c) => {
+  const tableId = c.req.param('id');
+  const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  if (!table) return c.json({ error: 'not found' }, 404);
+
+  let body: z.infer<typeof dedupeRowsSchema>;
+  try {
+    body = dedupeRowsSchema.parse(await c.req.json().catch(() => ({})));
+  } catch {
+    return c.json({ error: 'a non-empty `keys` array is required' }, 400);
+  }
+
+  const { groups, merged, kept } = await dedupeExistingRows(tableId, body.keys, { actor: 'user' });
+  return c.json({ groups, merged, kept });
 });
 
 const runTableSchema = z.object({

@@ -32,6 +32,26 @@ When creating/importing into a table, the operator picks a **dedupe policy**:
 So dedupe becomes: *"how should this table decide two rows are the same?"* —
 surfaced in the import/table-settings UI, defaulting to **None** for safety.
 
+### Dedupe existing rows (Clay-style, from the column ⋯ menu)
+Dedupe is **not only an import-time decision**. A table can already hold
+duplicates (pasted, API-added, imported under `none`), so dedupe is also a
+**deliberate post-hoc action** — exactly how Clay does it: open a column's `⋯`
+menu → **"Dedupe rows by this column"**.
+
+- **Preview, then confirm.** The UI first asks the API how many duplicates exist
+  (`GET /tables/:id/duplicates?keys=<csv>` → `{ groups, rows }`) and shows
+  *"Found N duplicate values, M rows will be merged into their oldest match —
+  existing values are never overwritten."* before doing anything.
+- **Perform.** `POST /tables/:id/dedupe { keys }` → `{ groups, merged, kept }`.
+  Core fn: `dedupeExistingRows(tableId, keys, { dryRun? })`.
+- **Semantics:** group rows by the trim+lowercase tuple of `keys`; rows with any
+  empty key value are never duplicates; in each cluster keep the **oldest** row,
+  fill only its **empty** fields from the dupes (never clobber), delete the rest,
+  and write `audit_log` (`update` on keeper, `delete` per removed). **Idempotent.**
+- **Import never forces a choice.** Import does not prompt for a dedupe policy;
+  it just reports what merged and hints *"dedupe rows anytime from a column's ⋯
+  menu."* — keeping the import flow one decision lighter.
+
 ### Data/code impact
 - `ingestLead` stops assuming email+domain; it takes a **dedupe policy** arg
   (`{ keys: string[] } | 'none'`).

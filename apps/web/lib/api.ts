@@ -152,6 +152,39 @@ export interface Table {
   settings?: { protected?: boolean };
 }
 
+// ── Phase G: Dedupe ──────────────────────────────────────────────────────────
+
+/** Preview of how many rows a dedupe over `keys` would merge away. */
+export interface DuplicatesPreview {
+  keys: string[];
+  /** Number of duplicate-value clusters. */
+  groups: number;
+  /** How many rows would be merged away (collapsed into their oldest match). */
+  rows: number;
+}
+
+/** Result of performing a dedupe over `keys`. */
+export interface DedupeResult {
+  /** Number of duplicate-value clusters that were collapsed. */
+  groups: number;
+  /** How many rows were merged away. */
+  merged: number;
+  /** How many rows remain (the oldest match of each cluster). */
+  kept: number;
+}
+
+export const tablesApi = {
+  /** Preview duplicates for a set of key columns (read-only). */
+  duplicates: (tableId: string, keys: string[]) =>
+    api.get<DuplicatesPreview>(
+      `/tables/${tableId}/duplicates?keys=${encodeURIComponent(keys.join(','))}`,
+    ),
+
+  /** Dedupe the table by a set of key columns — merges duplicates into oldest match. */
+  dedupe: (tableId: string, keys: string[]) =>
+    api.post<DedupeResult>(`/tables/${tableId}/dedupe`, { keys }),
+};
+
 // ── Dogi goal-mode (Phase D) ─────────────────────────────────────────────────
 
 /** One step in a Dogi plan — mirrors the dogi-agent.md §9 schema. */

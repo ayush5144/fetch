@@ -1,6 +1,6 @@
 import { accounts, db, leads, tables } from '@fetch/db';
 import type { Account, Lead } from '@fetch/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { audit, diffOf } from './audit';
 import type { CanonicalLead } from './types';
 
@@ -119,6 +119,158 @@ export async function findOrCreateAccount(canonical: CanonicalLead): Promise<Acc
 function fillIfEmpty<T>(current: T | null | undefined, incoming: T | null | undefined): T | null {
   if (current !== null && current !== undefined && current !== '') return current;
   return incoming ?? null;
+}
+
+/**
+ * Merge a source lead's fields INTO a keeper, only where the keeper is currently
+ * empty/null — never clobbering existing keeper data. Shallow-merges user `data`
+ * (keeper keys win). Shared by ingest-time dedupe and existing-row dedupe.
+ */
+function mergeLeadFields(
+  keeper: Lead,
+  source: Pick<
+    Lead,
+    'firstName' | 'lastName' | 'email' | 'phone' | 'title' | 'linkedinUrl' | 'accountId' | 'data'
+  >,
+): Pick<
+  Lead,
+  'firstName' | 'lastName' | 'email' | 'phone' | 'title' | 'linkedinUrl' | 'accountId' | 'data'
+> {
+  return {
+    firstName: fillIfEmpty(keeper.firstName, source.firstName),
+    lastName: fillIfEmpty(keeper.lastName, source.lastName),
+    email: fillIfEmpty(keeper.email, source.email),
+    phone: fillIfEmpty(keeper.phone, source.phone),
+    title: fillIfEmpty(keeper.title, source.title),
+    linkedinUrl: fillIfEmpty(keeper.linkedinUrl, source.linkedinUrl),
+    accountId: keeper.accountId ?? source.accountId ?? null,
+    // Fill only keeper-empty data keys; existing keeper values are preserved.
+    data: {
+      ...((source.data as Record<string, unknown> | null) ?? {}),
+      ...((keeper.data as Record<string, unknown> | null) ?? {}),
+    },
+  };
+}
+
+/** Result of a dedupe-existing-rows pass (preview or applied). */
+export interface DedupeResult {
+  /** Number of duplicate-value clusters acted on (clusters of size ≥ 2). */
+  groups: number;
+  /** Rows removed (merged away) — sum over clusters of (clusterSize − 1). */
+  merged: number;
+  /** Keeper rows (one per acted-on cluster). */
+  kept: number;
+  /** Alias of `merged` — total rows that would be merged away (GET preview). */
+  rows: number;
+}
+
+/**
+ * Dedupe rows that ALREADY exist in a table by one or more key columns — the
+ * Clay-style "Dedupe by this column" action (NOT ingest-time dedupe).
+ *
+ * Groups the table's rows by the tuple of values for `keys` (each key read from
+ * the lead's system field when it is one, else from `data[key]`; string values
+ * normalized by trim + lowercase). Rows where ANY key value is empty/null are
+ * never duplicates and are left untouched.
+ *
+ * In each cluster of size ≥ 2 it KEEPS the OLDEST row (min `createdAt`, tiebreak
+ * by `id`), merges every other row's fields into the keeper ONLY where the
+ * keeper is empty (never clobbering existing keeper data), then DELETES the
+ * non-keepers. Writes an `update` audit on a keeper that absorbed fields and a
+ * `delete` audit on each removed row. Every query is scoped by `table_id`.
+ *
+ * `dryRun: true` computes the same counts WITHOUT mutating (powers the preview).
+ * Idempotent: a second consecutive run yields `merged: 0`.
+ */
+export async function dedupeExistingRows(
+  tableId: string,
+  keys: string[],
+  opts?: { dryRun?: boolean; actor?: string },
+): Promise<DedupeResult> {
+  const dryRun = opts?.dryRun ?? false;
+  const empty: DedupeResult = { groups: 0, merged: 0, kept: 0, rows: 0 };
+  if (keys.length === 0) return empty;
+
+  const rows = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+
+  // Bucket rows by their normalized key tuple. Rows with any empty key value are
+  // skipped — they can never be duplicates.
+  const clusters = new Map<string, Lead[]>();
+  for (const lead of rows) {
+    const values = keys.map((key) => leadKeyValue(lead, key));
+    if (values.some((v) => v == null)) continue;
+    const bucket = JSON.stringify(values);
+    (clusters.get(bucket) ?? clusters.set(bucket, []).get(bucket)!).push(lead);
+  }
+
+  let groups = 0;
+  let merged = 0;
+  let kept = 0;
+
+  for (const members of clusters.values()) {
+    if (members.length < 2) continue;
+    groups += 1;
+    kept += 1;
+
+    // Keeper = oldest (min createdAt), tiebreak by id for determinism.
+    const ordered = [...members].sort((a, b) => {
+      const at = a.createdAt.getTime();
+      const bt = b.createdAt.getTime();
+      if (at !== bt) return at - bt;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+    const keeper = ordered[0]!;
+    const dupes = ordered.slice(1);
+    merged += dupes.length;
+
+    if (dryRun) continue;
+
+    // Absorb each dupe's fields into the keeper, only filling empties. Apply the
+    // dupes in order so the oldest dupe's value wins a contested empty field.
+    let working = keeper;
+    let changed = false;
+    for (const dupe of dupes) {
+      const next = mergeLeadFields(working, dupe);
+      const diff = diffOf(working as unknown as Record<string, unknown>, next);
+      if (Object.keys(diff).length > 0) changed = true;
+      working = { ...working, ...next };
+    }
+
+    if (changed) {
+      const set = {
+        firstName: working.firstName,
+        lastName: working.lastName,
+        email: working.email,
+        phone: working.phone,
+        title: working.title,
+        linkedinUrl: working.linkedinUrl,
+        accountId: working.accountId,
+        data: working.data,
+      };
+      await db.update(leads).set(set).where(eq(leads.id, keeper.id));
+      await audit({
+        actor: opts?.actor,
+        entity: 'lead',
+        entityId: keeper.id,
+        action: 'update',
+        diff: diffOf(keeper as unknown as Record<string, unknown>, set),
+      });
+    }
+
+    // Delete the non-keepers, scoped to this table so a stray id can't reach out.
+    for (const dupe of dupes) {
+      await db.delete(leads).where(and(eq(leads.id, dupe.id), eq(leads.tableId, tableId)));
+      await audit({
+        actor: opts?.actor,
+        entity: 'lead',
+        entityId: dupe.id,
+        action: 'delete',
+        diff: { mergedInto: keeper.id, tableId },
+      });
+    }
+  }
+
+  return { groups, merged, kept, rows: merged };
 }
 
 /**
