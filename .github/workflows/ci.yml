@@ -1,0 +1,60 @@
+name: CI
+
+# Phase 1 gate: every push and PR runs install → typecheck → lint → build →
+# tests (unit + db). The db tests run against a real Postgres service container,
+# the same engine that hosts the queue in production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: fetch
+          POSTGRES_PASSWORD: fetch
+          POSTGRES_DB: fetch_test
+        ports:
+          - 5432:5432
+        # Wait until Postgres is accepting connections before the job starts.
+        options: >-
+          --health-cmd "pg_isready -U fetch -d fetch_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Unit tests need none of this; the db project reads TEST_DATABASE_URL.
+      TEST_DATABASE_URL: postgres://fetch:fetch@localhost:5432/fetch_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test (unit + db)
+        run: pnpm test

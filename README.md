@@ -74,7 +74,24 @@ See **[docu.md](./docu.md)** for the full architecture and how every piece fits.
 | `pnpm seed` | Seed demo data. |
 | `pnpm typecheck` | Typecheck every workspace. |
 | `pnpm build` | Build all packages + apps. |
+| `pnpm test` | Run the full suite (unit + db). |
+| `pnpm test:unit` | Pure-function / mock tests only (no DB). |
+| `pnpm test:db` | Integration tests against `TEST_DATABASE_URL`. |
 | `scripts/backup.sh` | `pg_dump` the whole DB (a complete snapshot). |
+
+### Testing
+
+Two projects: **unit** (fast, no DB) and **db** (integration against a real
+Postgres). For the db suite, point `TEST_DATABASE_URL` at a throwaway database:
+
+```bash
+docker run -d --name fetch-test-pg -e POSTGRES_USER=fetch -e POSTGRES_PASSWORD=fetch \
+  -e POSTGRES_DB=fetch_test -p 5434:5432 postgres:18
+TEST_DATABASE_URL=postgres://fetch:fetch@localhost:5434/fetch_test pnpm test
+```
+
+CI (`.github/workflows/ci.yml`) runs install → typecheck → lint → build → test
+on every push, with a Postgres service for the db project.
 
 ## License
 

@@ -16,129 +16,129 @@ Operational checklist for phased builds. Keep this file current. Do not mix long
 
 ## Phase 1 - Project Foundation And Tooling
 
-- [ ] Scaffold monorepo: `apps/api`, `apps/worker`, `apps/web`, `packages/db`, `packages/core`
+- [x] Scaffold monorepo: `apps/api`, `apps/worker`, `apps/web`, `packages/db`, `packages/core`
   - Test: `npm run typecheck`, `npm run lint`, and `npm run build` run across workspaces or missing scripts are documented.
-- [ ] Add `docker-compose.yml` with Postgres 18 only (no Redis)
+- [x] Add `docker-compose.yml` with Postgres 18 only (no Redis)
   - Test: `docker compose up` starts Postgres and the API connects to it.
-- [ ] Configure Drizzle and migration tooling in `packages/db`
+- [x] Configure Drizzle and migration tooling in `packages/db`
   - Test: `npm run migrate` runs on a fresh DB and re-running is a no-op (idempotent).
-- [ ] Add pg-boss singleton in `packages/core` against the same Postgres
+- [x] Add pg-boss singleton in `packages/core` against the same Postgres
   - Test: boss connects and creates its schema on first boot.
-- [ ] Add `.env.example` listing DB, LLM, and provider keys
+- [x] Add `.env.example` listing DB, LLM, and provider keys
   - Test: app fails fast with a clear error when a required env var is missing.
-- [ ] Add `GET /health` endpoint with a DB connectivity check
+- [x] Add `GET /health` endpoint with a DB connectivity check
   - Test: returns 200 with `db: ok`; returns 503 when Postgres is down.
-- [ ] Set up CI: install → typecheck → lint → test on push
+- [x] Set up CI: install → typecheck → lint → test on push
   - Test: CI passes green on a clean checkout.
 
 ## Phase 2 - Canonical Data Model, Ingestion, Dedupe
 
-- [ ] Write migrations for all core tables from `ARCHITECTURE.md`
+- [x] Write migrations for all core tables from `ARCHITECTURE.md`
   - Test: `npm run migrate` creates leads, accounts, sources, columns, jobs, events, campaigns, sequences, prompts, audit_log.
-- [ ] Add `leads.data` JSONB column with a GIN index
+- [x] Add `leads.data` JSONB column with a GIN index
   - Test: a filter query on a `data` key uses the GIN index (`EXPLAIN` shows index scan).
-- [ ] Define a `Normalizer` interface mapping any source to a CanonicalLead
+- [x] Define a `Normalizer` interface mapping any source to a CanonicalLead
   - Test: the same person from CSV and from manual entry produces an identical canonical shape.
-- [ ] Build the CSV connector with header → field mapping
+- [x] Build the CSV connector with header → field mapping
   - Test: importing a 100-row CSV creates 100 leads with mapped fields; unmapped columns land in `data`.
-- [ ] Build manual single-lead create and a stub API/webhook ingest endpoint
+- [x] Build manual single-lead create and a stub API/webhook ingest endpoint
   - Test: `POST /leads` creates one canonical lead and returns its id.
-- [ ] Implement dedupe on email (lead) and domain (account)
+- [x] Implement dedupe on email (lead) and domain (account)
   - Test: re-importing the same CSV creates 0 duplicate leads; two leads at one company share one accounts row.
-- [ ] Store the raw payload on every import in `sources.raw`
+- [x] Store the raw payload on every import in `sources.raw`
   - Test: each import writes a sources row containing the original payload.
-- [ ] Write to `audit_log` on every create and update
+- [x] Write to `audit_log` on every create and update
   - Test: a create and an update each produce an audit_log entry with a diff.
-- [ ] Handle a lead with no email without crashing the batch
+- [x] Handle a lead with no email without crashing the batch
   - Test: a no-email row imports with a status reflecting it; the rest of the batch still completes.
 
 ## Phase 3 - Job System And Worker Pool
 
-- [ ] Create pg-boss queues: enrich, validate, personalize, send, event
+- [x] Create pg-boss queues: enrich, validate, personalize, send, event
   - Test: each queue is registered and visible on worker boot.
-- [ ] Configure retryLimit, retryBackoff with jitter, and a dead-letter queue per queue
+- [x] Configure retryLimit, retryBackoff with jitter, and a dead-letter queue per queue
   - Test: a handler that always throws is retried then lands in dead-letter after the limit.
-- [ ] Build the worker process with typed handlers per queue
+- [x] Build the worker process with typed handlers per queue
   - Test: enqueue a job → a worker claims and completes it; `jobs.status` transitions queued → active → completed.
-- [ ] Mirror job state into the `jobs` table for the UI
+- [x] Mirror job state into the `jobs` table for the UI
   - Test: every job has type, status, attempts, error, and timestamps populated.
-- [ ] Make every handler idempotent, keyed on lead_id + job type
+- [x] Make every handler idempotent, keyed on lead_id + job type
   - Test: re-running a completed job produces no duplicate side effects.
-- [ ] Build a job-monitor API: list, filter, view error, retry, inspect dead-letter
+- [x] Build a job-monitor API: list, filter, view error, retry, inspect dead-letter
   - Test: the retry endpoint re-enqueues a dead-lettered job and it can succeed.
-- [ ] Verify concurrency safety across multiple workers
+- [x] Verify concurrency safety across multiple workers
   - Test: two worker processes drain one queue with no job processed twice (SELECT ... FOR UPDATE SKIP LOCKED).
-- [ ] Add structured logging with job_id and lead_id correlation
+- [x] Add structured logging with job_id and lead_id correlation
   - Test: logs for one job can be filtered by its job_id.
 
 ## Phase 4 - Dynamic Columns Engine
 
-- [ ] Build CRUD for the `columns` table: key, label, type, config
+- [x] Build CRUD for the `columns` table: key, label, type, config
   - Test: creating a column persists it and it appears on reload.
-- [ ] Enforce the system-vs-user split
+- [x] Enforce the system-vs-user split
   - Test: system fields stay typed columns; user columns write only to `leads.data`.
-- [ ] Implement column types: enrichment, agent, formula, manual
+- [x] Implement column types: enrichment, agent, formula, manual
   - Test: each type can be created and stores its config (provider order / prompt / formula).
-- [ ] Implement "Run column" fan-out respecting filters and selection
+- [x] Implement "Run column" fan-out respecting filters and selection
   - Test: running a column over a 50-row filter creates exactly 50 jobs, not whole-table.
-- [ ] Implement run-only-if-empty
+- [x] Implement run-only-if-empty
   - Test: re-running a column skips already-filled cells and the job count drops.
-- [ ] Store per-cell `{ value, confidence, source_url }`
+- [x] Store per-cell `{ value, confidence, source_url }`
   - Test: each filled cell exposes a confidence value and a clickable source URL.
-- [ ] Implement formula recompute on dependency change
+- [x] Implement formula recompute on dependency change
   - Test: editing an input cell recomputes the dependent formula column.
-- [ ] Implement manual column inline edit (no job)
+- [x] Implement manual column inline edit (no job)
   - Test: typing a value into a manual cell persists without enqueuing a job.
-- [ ] Handle column deletion safely
+- [x] Handle column deletion safely
   - Test: deleting a column removes its definition without corrupting other `data` keys.
 
 ## Phase 5 - Enrichment (Waterfall + Agent Loop)
 
-- [ ] Define a `Provider` interface: `lookup(field, lead)` → value or null
+- [x] Define a `Provider` interface: `lookup(field, lead)` → value or null
   - Test: a mock provider can be registered and called by the waterfall.
-- [ ] Implement the waterfall with stop-on-first-hit in cost order
+- [x] Implement the waterfall with stop-on-first-hit in cost order
   - Test: when provider A returns a value, providers B and C are not called (asserted by call count).
-- [ ] Implement the agent loop fallback (LLM + tool calling)
+- [x] Implement the agent loop fallback (LLM + tool calling)
   - Test: when all providers miss, the agent loop runs and fills the cell.
-- [ ] Wire tools: web_search (Serper/Brave), scrape_url (Firecrawl), extract_field (Firecrawl extract), browser_action (Playwright) for gated pages
+- [x] Wire tools: web_search (Serper/Brave), scrape_url (Firecrawl), extract_field (Firecrawl extract), browser_action (Playwright) for gated pages
   - Test: each tool is callable from the loop and a tool failure is handled, not fatal.
-- [ ] Enforce a step limit and per-job cost ceiling
+- [x] Enforce a step limit and per-job cost ceiling
   - Test: the agent aborts cleanly at the step limit with a partial result and no infinite loop.
-- [ ] Always write structured output plus confidence and source URL
+- [x] Always write structured output plus confidence and source URL
   - Test: enriched cells store a value (not prose) and a reachable source URL.
-- [ ] Cache results per (field, company_domain) within a run
+- [x] Cache results per (field, company_domain) within a run
   - Test: a second lead at the same domain reuses the cached value with no new paid call.
 
 ## Phase 6 - Validation
 
-- [ ] Implement syntax check
+- [x] Implement syntax check
   - Test: a malformed address returns `invalid` with no downstream SMTP call.
-- [ ] Implement MX record check
+- [x] Implement MX record check
   - Test: a domain with no MX returns `invalid`.
-- [ ] Implement SMTP/mailbox reachability via Reacher
+- [x] Implement SMTP/mailbox reachability via Reacher
   - Test: an unreachable mailbox returns `risky` or `bounced`.
-- [ ] Implement disposable-domain detection
+- [x] Implement disposable-domain detection
   - Test: a disposable domain (e.g. mailinator) returns `disposable`.
-- [ ] Implement catch-all handling per policy
+- [x] Implement catch-all handling per policy
   - Test: a catch-all domain returns `risky`, not `valid`.
-- [ ] Map results to the status enum and dedupe duplicates
+- [x] Map results to the status enum and dedupe duplicates
   - Test: status is one of valid/risky/invalid/disposable/duplicate/no_email; a known duplicate returns `duplicate`.
-- [ ] Make `validation_status` the sending gate
+- [x] Make `validation_status` the sending gate
   - Test: campaign eligibility excludes every non-valid status (opt-in risky only).
 
 ## Phase 7 - Personalization
 
-- [ ] Build the `prompts` table with versions and guardrails
+- [x] Build the `prompts` table with versions and guardrails
   - Test: a prompt stores version plus guardrails (max length, required vars, banned claims).
-- [ ] Implement variable binding from lead, account, and `data`
+- [x] Implement variable binding from lead, account, and `data`
   - Test: `{{first_name}}` and `{{recent_signal}}` resolve from real lead data.
-- [ ] Generate `{ subject, opener, body, cta }` and store the prompt_version used
+- [x] Generate `{ subject, opener, body, cta }` and store the prompt_version used
   - Test: generated copy is written to the lead row with its prompt_version.
-- [ ] Run guardrail checks and flag failures for review
+- [x] Run guardrail checks and flag failures for review
   - Test: an over-length or missing-variable output is flagged, not auto-approved.
-- [ ] Model approval states: draft → ready → approved → rejected
+- [x] Model approval states: draft → ready → approved → rejected
   - Test: approval transitions work and are recorded in audit_log.
-- [ ] Expose personalization as an agent column type
+- [x] Expose personalization as an agent column type
   - Test: a personalization column runs across rows like any other agent column.
 
 ## Phase 8 - Sending (Instantly Adapter First)
