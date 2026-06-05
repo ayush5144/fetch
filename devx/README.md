@@ -21,7 +21,7 @@ fills any cell — using your keys or ours."*
 | Doc | What it covers |
 |---|---|
 | [direction.md](./direction.md) | The locked decisions and why. Read this first. |
-| [dogi-agent.md](./dogi-agent.md) | **Dogi** — the customizable fetch agent: config, web search, simple vs advanced (Typebot-style), saved agents. |
+| [dogi-agent.md](./dogi-agent.md) | **Dogi** — the customizable fetch agent: config, web search, **creating columns + goal mode** (plan a request into several columns), simple vs advanced (Typebot-style), saved agents. |
 | [leads-grid.md](./leads-grid.md) | The Clay/Sheets grid: inline `+ column`, per-cell run, cell states, add-row, header menus. |
 | [multi-table.md](./multi-table.md) | Many tables per workspace; Overview creates/picks tables. Data model + migration. |
 | [providers-and-keys.md](./providers-and-keys.md) | Four LLM providers, native vs our web search, BYOK + env keys, cost estimate, OpenClay reuse. |

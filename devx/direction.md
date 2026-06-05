@@ -22,10 +22,15 @@ can save. Customization must be **really simple by default**:
 - choose **provider + model**.
 
 Two web-search backends, user's choice: the **LLM provider's native web search**,
-**or our own tool** (Serper / Firecrawl). An **advanced mode** offers a
-**Typebot/n8n-style visual flow** to map a custom agent's steps and fields.
-Users can **save** their Dogis (and enrichments), like they save prompts today.
-→ [dogi-agent.md](./dogi-agent.md)
+**or our own tool** (Serper / Firecrawl).
+
+Dogi is not limited to one cell: it can **create columns**. Each output is
+**create-new** or **map-to-existing**, and in **goal mode** Dogi decomposes a
+request ("find the CEO's email, then write him a custom email") into multiple
+columns it creates and runs in order — with a human reviewing the plan first. An
+**advanced mode** offers a **Typebot/n8n-style visual flow** to map a custom
+agent's steps and fields. Users can **save** their Dogis and plans (and
+enrichments), like they save prompts today. → [dogi-agent.md](./dogi-agent.md)
 
 ## D4 · Four providers, wired from the start
 Anthropic, OpenAI, Gemini, Grok — all four from day one (Vertex optional later).
