@@ -63,12 +63,26 @@ Two execution shapes, chosen automatically by whether tools are on:
 ### a) Transform (LLM only, no external sources) — one call
 Pure LLM over the `reads` columns. Covers the **"aggregate/summarize two
 columns"** case and the **"write an email from found fields"** case. Fast, cheap,
-no network.
+no network. **One LLM call** (`maxSteps = 1`).
 
 ### b) Research loop (sources on) — tool-calling
 The model proposes a search/scrape, we run it, feed results back, loop until a
-confident value or the **step ceiling**. This is our existing `packages/agent`
-loop, generalized.
+confident value or the **step ceiling** (`maxSteps`, default 6). This is our
+existing `packages/agent` loop, generalized.
+
+> **Two execution shapes ⇒ two system prompts.** This distinction is not just
+> about tools — it changes what we *ask the model to do*, so each shape gets its
+> own system prompt (`packages/agent/src/dogi.ts`):
+>
+> | Shape | Prompt | Posture |
+> |---|---|---|
+> | **Research** (tools / native search on) | `SYSTEM_RESEARCH` | *"Find ONE field… **Never guess.** If you cannot find it, return value null."* A wrong fact is worse than no fact. |
+> | **Transform** (LLM only) | `SYSTEM_TRANSFORM` | *"Produce ONE field by transforming the given context (summarize / classify / rewrite / derive). Don't invent external facts; return null only when the context genuinely lacks what you need."* |
+>
+> The selector is one line: `isResearch = Boolean(opts.tools?.length || opts.webSearch)`.
+> **Why it matters:** a single research prompt makes transform columns *refuse*
+> ("never guess" ⇒ `value: null` ⇒ cell shows failed) even though generation was
+> the whole point. See §12.
 
 ```
 reads + instruction
@@ -307,3 +321,84 @@ Orchestration (jobs, run-only-if-empty, provenance) is already right. Dogi adds 
    approve, it creates + runs them in order.
 5. **Map to existing** — same as #4 but step 2's output is **mapped** to your
    existing `outreach_email` column instead of creating a new one.
+
+---
+
+## 12. Verified live (2026-06-06)
+
+Dogi was run end-to-end against a real OpenAI key (`gpt-4o-mini`) — not mocks —
+through the full **API → pg-boss → worker → Postgres** path. The trace below is
+the actual pipeline; every hop was confirmed:
+
+```
+ column config (sources:[llm], brain:openai/gpt-4o-mini)
+        │  POST /tables/:id/columns/:key/run  { force:true }
+        ▼
+ planRun ──► enqueue('enrich', {leadId, columnKey})        ← API only writes+enqueues
+        ▼
+ worker: runner.ts ──► runDogi(config, ctx)
+        │                 ├─ resolveBrain  → getLLM({provider,model,key})   ✅ valid client
+        │                 ├─ runSource('llm') → runLLMSource (maxSteps=1)
+        │                 │     ├─ system = SYSTEM_TRANSFORM   ← the fix
+        │                 │     └─ llm.chat() → {"value":…,"confidence":…}   ✅ JSON
+        │                 └─ parseResult → mergeResults
+        ▼
+ write leads.data[key] + enrichmentConf[key]  ·  status = done   ✅ cell filled
+```
+
+**What we tested and saw:**
+
+| Test (live, real key) | Result |
+|---|---|
+| `getLLM` + `llm.chat()` | ✅ valid client, well-formed JSON |
+| Deterministic transform ("company → UPPERCASE") | ✅ `"ACME"`, confidence 1.0 |
+| Generative transform ("describe this company") | ✅ real one-liner, confidence 0.9 |
+| Full run on the example table (Initech / Acme / Globex) | ✅ all three cells filled |
+| Agent unit tests + typecheck | ✅ 6/6 pass, clean |
+
+**The bug we found (and fixed).** Live testing surfaced what mocked unit tests
+could not: every **LLM-only** cell came back `failed` with an empty value, while
+the pipeline itself was provably healthy (key works, client builds, `chat()`
+returns proper JSON). Root cause: Dogi used **one** research-oriented system
+prompt for *all* shapes. Its instruction *"Never guess… return value null if you
+cannot find it"* is correct for web/scrape but tells a pure-transform column to
+**refuse** — so "summarize/describe/derive" tasks returned `null`. Fix: split the
+prompt by execution shape (§3). `null → failed` provenance is otherwise correct —
+e.g. a row with no company legitimately yields no description.
+
+> **Determinism note.** A borderline input (a fictional name with no other
+> context) can still return `null` on one run and a value on the next — that's the
+> model's call under "don't invent external facts," not a pipeline fault. Re-run
+> or add more `reads` context.
+
+---
+
+## 13. How to modify Dogi — in points
+
+All of this lives in `packages/agent/src/dogi.ts` unless noted.
+
+- **Change a mode's behaviour / tone** → edit `SYSTEM_RESEARCH` or
+  `SYSTEM_TRANSFORM`. Keep the JSON output contract (`OUTPUT_CONTRACT`) intact —
+  `parseResult` depends on it.
+- **Change the output contract** (add a field to every cell) → edit
+  `OUTPUT_CONTRACT` **and** `parseResult` together; update `DogiResult` type.
+- **Change when a run is "research" vs "transform"** → the selector
+  `isResearch = Boolean(opts.tools?.length || opts.webSearch)` in `runLLMSource`.
+- **Add a new source type** (e.g. a second provider, a vector lookup) → add a
+  `case` in `runSource`, give it a `providerTag`, and extend the `DogiSource`
+  union in `packages/core` (the config schema).
+- **Change the step ceiling for research loops** → `config.maxSteps` (default 6);
+  transform is always 1 call.
+- **Change the "stop at first confident answer" threshold** → `CONFIDENCE_FLOOR`
+  (0.5) used by the `first` policy.
+- **Change how multiple sources merge** → `mergeResults` (the `combine` policy)
+  and the `policy` switch in `runDogi`.
+- **Change which lead columns the model sees** → `leadContext` (it surfaces the
+  base identity + only the `reads` keys — the allow-list).
+- **Swap / add an LLM provider or model** → `packages/llm` (`getLLM`,
+  `DEFAULT_MODELS`); native web search is `ChatOptions.webSearch:'native'`.
+- **Use a caller's own key (BYOK)** → pass `apiKey` through the run context;
+  `resolveBrain` honours `brain.keySource:'byok'`. Keys are never persisted/logged.
+- **Always test changes live**, not only with mocked unit tests — the prompt bug
+  above was invisible to mocks. Quick harness: a throwaway `src/_dbg.ts` that
+  imports `runDogi` and runs it with a real key (delete after).

@@ -67,13 +67,32 @@ export interface DogiRunContext {
 /** A value is "confident" enough to stop the `first` policy at. */
 const CONFIDENCE_FLOOR = 0.5;
 
-const SYSTEM = `You are Dogi, a precise B2B research agent inside Fetch.
-Find ONE specific field for a lead and return it as structured data.
-When you have the answer, reply with a SINGLE JSON object and nothing else:
-{ "value": <the value, or null if truly not found>,
+/** Shared output contract — every Dogi run returns this single JSON object. */
+const OUTPUT_CONTRACT = `Reply with a SINGLE JSON object and nothing else:
+{ "value": <the value, or null>,
   "confidence": <0..1 how sure you are>,
-  "source": "<the URL you got it from, or null>" }
+  "source": "<the URL you got it from, or null>" }`;
+
+/**
+ * Research prompt — used when the run has real tools (web/scrape) or native web
+ * search. Here a wrong fact is worse than no fact, so refusing to guess is right.
+ */
+const SYSTEM_RESEARCH = `You are Dogi, a precise B2B research agent inside Fetch.
+Find ONE specific field for a lead using the tools available.
+${OUTPUT_CONTRACT}
 Never guess. If you cannot find it, return value null with low confidence.`;
+
+/**
+ * Transform prompt — used for pure-LLM columns (no tools). This is a generation
+ * task (summarize / classify / rewrite / derive) over the given lead context,
+ * NOT a fact lookup, so the model should produce a value rather than refuse.
+ */
+const SYSTEM_TRANSFORM = `You are Dogi, a helpful column agent inside Fetch.
+Produce ONE field for a lead by transforming the lead context you are given
+(summarize, classify, rewrite, format, or derive from existing columns).
+${OUTPUT_CONTRACT}
+Work only from the provided context — do not invent external facts. Return value
+null only when the context genuinely lacks what you need.`;
 
 function leadContext(lead: Lead, reads?: string[]): string {
   const data = (lead.data as Record<string, unknown>) ?? {};
@@ -136,9 +155,10 @@ async function runLLMSource(
   ctx: DogiRunContext,
   opts: { tools?: Tool[]; webSearch?: 'native'; providerTag: string },
 ): Promise<DogiResult | null> {
+  const isResearch = Boolean(opts.tools?.length || opts.webSearch);
   const maxSteps = opts.tools?.length ? (config.maxSteps ?? 6) : 1;
   const messages: LLMMessage[] = [
-    { role: 'system', content: SYSTEM },
+    { role: 'system', content: isResearch ? SYSTEM_RESEARCH : SYSTEM_TRANSFORM },
     {
       role: 'user',
       content: `${config.instruction}\n\nField to return: ${ctx.field}\n\nLead context:\n${leadContext(
