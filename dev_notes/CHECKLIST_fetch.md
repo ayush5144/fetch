@@ -357,9 +357,9 @@ only; build after sign-off. Every phase ends with
 
 ## Phase G - Optional Dedupe + Accounts Fold
 
-- [ ] Per-table dedupe policy: `none` (default) | `by columns` | `by company`
+- [x] Per-table dedupe policy: `none` (default) | `by columns` | `by company`
   - Test: importing the same people twice with `none` creates duplicates; with `by columns: [email]` it merges.
-- [ ] `ingestLead` takes an explicit policy; `findOrCreateAccount` becomes opt-in (only `by company`)
+- [x] `ingestLead` takes an explicit policy; `findOrCreateAccount` becomes opt-in (only `by company`)
   - Test: with `none`, no accounts row is created; with `by company`, one row per domain.
 - [ ] Remove Accounts from the headline nav (keep table/API for "companies as a table" later)
   - Test: the sidebar no longer shows Accounts; existing account data is intact.

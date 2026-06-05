@@ -1,8 +1,90 @@
-import { accounts, db, leads } from '@fetch/db';
+import { accounts, db, leads, tables } from '@fetch/db';
 import type { Account, Lead } from '@fetch/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { audit, diffOf } from './audit';
 import type { CanonicalLead } from './types';
+
+/**
+ * How a table decides two incoming rows are "the same" (Phase G). Dedupe is now
+ * an opt-in, operator-chosen policy — NOT a forced default. Six people from one
+ * company are six valid leads unless the operator says otherwise.
+ *
+ * - `none`    — never merge; always create a new lead. The default.
+ * - `columns` — merge when ALL of `keys` match an existing lead in the table
+ *               (e.g. `keys: ['email']`), else create.
+ * - `company` — `columns` keyed on email PLUS the by-domain account find-or-create
+ *               (the old always-on behavior, now opt-in only for company tables).
+ */
+export type DedupePolicy = { mode: 'none' | 'columns' | 'company'; keys?: string[] };
+
+/** The safe default when a table has no configured policy. */
+const DEFAULT_POLICY: DedupePolicy = { mode: 'none' };
+
+/** Read a table's stored dedupe policy from settings, defaulting to `none`. */
+async function policyForTable(tableId: string): Promise<DedupePolicy> {
+  const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  const stored = (table?.settings as { dedupe?: DedupePolicy } | null)?.dedupe;
+  return stored ?? DEFAULT_POLICY;
+}
+
+/** Map a canonical lead's value for a dedupe key column (system field or data[key]). */
+function canonicalKeyValue(canonical: CanonicalLead, key: string): string | null {
+  const fieldMap: Record<string, string | null | undefined> = {
+    email: canonical.email,
+    firstName: canonical.firstName,
+    first_name: canonical.firstName,
+    lastName: canonical.lastName,
+    last_name: canonical.lastName,
+    phone: canonical.phone,
+    title: canonical.title,
+    linkedinUrl: canonical.linkedinUrl,
+    linkedin_url: canonical.linkedinUrl,
+    domain: canonical.company?.domain,
+  };
+  const raw =
+    key in fieldMap ? fieldMap[key] : (canonical.data?.[key] as string | null | undefined);
+  const v = raw == null ? '' : String(raw).trim().toLowerCase();
+  return v === '' ? null : v;
+}
+
+/** A lead's stored value for a dedupe key column (system field or data[key]). */
+function leadKeyValue(lead: Lead, key: string): string | null {
+  const fieldMap: Record<string, string | null | undefined> = {
+    email: lead.email,
+    firstName: lead.firstName,
+    first_name: lead.firstName,
+    lastName: lead.lastName,
+    last_name: lead.lastName,
+    phone: lead.phone,
+    title: lead.title,
+    linkedinUrl: lead.linkedinUrl,
+    linkedin_url: lead.linkedinUrl,
+  };
+  const raw =
+    key in fieldMap
+      ? fieldMap[key]
+      : ((lead.data as Record<string, unknown> | null)?.[key] as string | null | undefined);
+  const v = raw == null ? '' : String(raw).trim().toLowerCase();
+  return v === '' ? null : v;
+}
+
+/**
+ * Find an existing lead in the table that matches the canonical on ALL `keys`
+ * (every key non-empty and equal). Returns undefined when no key is usable or no
+ * row matches — the caller then creates a new lead.
+ */
+async function findMatch(
+  canonical: CanonicalLead,
+  tableId: string,
+  keys: string[],
+): Promise<Lead | undefined> {
+  const wanted = keys.map((key) => [key, canonicalKeyValue(canonical, key)] as const);
+  // A key with no value can't establish identity — skip the whole match.
+  if (wanted.length === 0 || wanted.some(([, v]) => v == null)) return undefined;
+
+  const candidates = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+  return candidates.find((lead) => wanted.every(([key, v]) => leadKeyValue(lead, key) === v));
+}
 
 /**
  * Find-or-create the account for a canonical lead, keyed on company domain
@@ -40,28 +122,37 @@ function fillIfEmpty<T>(current: T | null | undefined, incoming: T | null | unde
 }
 
 /**
- * Ingest one canonical lead with dedupe on email. On a match we MERGE
- * (fill empty system fields, shallow-merge user `data`) rather than duplicate;
- * with no match we create. Re-importing the same CSV therefore yields zero
- * duplicate leads. Every path writes an audit_log entry.
+ * Ingest one canonical lead under the table's (or an explicitly passed) dedupe
+ * policy (Phase G). Dedupe is OPT-IN:
+ *
+ * - `none` (default) → always create a new lead; six people from one company are
+ *   six rows. No account is created.
+ * - `columns` → merge into an existing lead when ALL `keys` match (fill empty
+ *   system fields, shallow-merge user `data`); else create. No account.
+ * - `company` → merge keyed on `email` AND find-or-create the by-domain account.
+ *
+ * When `ctx.dedupe` is omitted the policy is read from the table's
+ * `settings.dedupe`, defaulting to `none`. Every path writes an audit_log entry.
  *
  * Returns the persisted lead and whether it was newly created — the caller uses
  * `created` plus what's missing to decide which jobs to enqueue.
  */
 export async function ingestLead(
   canonical: CanonicalLead,
-  ctx: { sourceId: string; tableId: string; actor?: string },
+  ctx: { sourceId: string; tableId: string; actor?: string; dedupe?: DedupePolicy },
 ): Promise<{ lead: Lead; created: boolean }> {
-  const account = await findOrCreateAccount(canonical);
+  const policy = ctx.dedupe ?? (await policyForTable(ctx.tableId));
   const email = canonical.email?.trim().toLowerCase() || null;
 
-  // Dedupe is scoped to the table — a lead with the same email in another table
-  // is a separate row. (Phase G makes the dedupe key configurable per table.)
-  const existing = email
-    ? await db.query.leads.findFirst({
-        where: and(eq(leads.email, email), eq(leads.tableId, ctx.tableId)),
-      })
-    : undefined;
+  // Accounts are opt-in: only the `company` policy resolves the by-domain account.
+  const account = policy.mode === 'company' ? await findOrCreateAccount(canonical) : null;
+
+  // Pick the match key(s) for this policy. `none` never matches (always create);
+  // `company` is email; `columns` uses the operator-chosen key columns.
+  const matchKeys =
+    policy.mode === 'company' ? ['email'] : policy.mode === 'columns' ? (policy.keys ?? []) : [];
+  const existing =
+    matchKeys.length > 0 ? await findMatch(canonical, ctx.tableId, matchKeys) : undefined;
 
   if (existing) {
     const merged = {

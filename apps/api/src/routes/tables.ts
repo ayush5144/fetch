@@ -42,9 +42,18 @@ tablesRoutes.post('/', async (c) => {
   return c.json({ table: created }, 201);
 });
 
+/**
+ * Patch a table's name/description/icon and/or its `settings` (e.g.
+ * `settings.dedupe`, the per-table dedupe policy — Phase G). `settings` replaces
+ * the stored object, so callers pass the full settings they want persisted.
+ */
+const patchSchema = createSchema.partial().extend({
+  settings: z.record(z.unknown()).optional(),
+});
+
 tablesRoutes.patch('/:id', async (c) => {
   const id = c.req.param('id');
-  const patch = createSchema.partial().parse(await c.req.json());
+  const patch = patchSchema.parse(await c.req.json());
   const [updated] = await db.update(tables).set(patch).where(eq(tables.id, id)).returning();
   if (!updated) return c.json({ error: 'not found' }, 404);
   return c.json({ table: updated });
@@ -129,9 +138,16 @@ const importMappingSchema = z
   })
   .strict();
 
+/** Optional per-import dedupe override (Phase G); else the table's setting wins. */
+const dedupePolicySchema = z.object({
+  mode: z.enum(['none', 'columns', 'company']),
+  keys: z.array(z.string()).optional(),
+});
+
 const importSchema = z.object({
   csv: z.string(),
   mapping: z.record(importMappingSchema).optional(),
+  dedupe: dedupePolicySchema.optional(),
 });
 
 /**
@@ -148,7 +164,7 @@ const importSchema = z.object({
  */
 tablesRoutes.post('/:id/leads/import', async (c) => {
   const tableId = c.req.param('id');
-  const { csv, mapping: rawMapping } = importSchema.parse(await c.req.json());
+  const { csv, mapping: rawMapping, dedupe } = importSchema.parse(await c.req.json());
   const [source] = await db.insert(sources).values({ type: 'csv', raw: { bytes: csv.length } }).returning();
 
   const records = parseCsvRecords(csv);
@@ -201,7 +217,12 @@ tablesRoutes.post('/:id/leads/import', async (c) => {
   for (const record of records) {
     try {
       const canonical = recordToCanonicalWithMapping(record, mapping);
-      const { lead, created } = await ingestLead(canonical, { sourceId: source!.id, tableId, actor: 'user' });
+      const { lead, created } = await ingestLead(canonical, {
+        sourceId: source!.id,
+        tableId,
+        actor: 'user',
+        dedupe,
+      });
       if (created) {
         imported++;
         if (lead.email) await enqueue('validate', { leadId: lead.id });
