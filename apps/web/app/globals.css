@@ -1298,3 +1298,40 @@ table.grid-tbl {
   background: var(--surface-2);
   color: var(--ink);
 }
+
+/* ── Agents page ────────────────────────────────────────────────────────────*/
+.agent-summary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}
+
+/* ── Settings page (read-only key status) ───────────────────────────────────*/
+.settings-model {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.settings-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row:last-child {
+  border-bottom: none;
+}
+.settings-row-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}

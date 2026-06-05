@@ -4,17 +4,25 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 /**
- * The left navigation. Table-first product, so Leads sits at the top; the rest
- * are the operator surfaces from the architecture (accounts, campaigns,
- * prompts, jobs, inbox, analytics).
+ * The left navigation. Table-first product, so the workspace (Overview +
+ * Tables) sits at the top, then Dogi (saved agents + key settings), the
+ * outreach surfaces, and the system monitors. The standalone Accounts page is
+ * folded away from the headline nav (the route still exists) per
+ * devx/dedupe-and-accounts.md §3.
  */
 const NAV: { group: string; items: { href: string; label: string; ico: string }[] }[] = [
   {
     group: 'Workspace',
     items: [
       { href: '/', label: 'Overview', ico: '◈' },
-      { href: '/leads', label: 'Leads', ico: '☰' },
-      { href: '/accounts', label: 'Accounts', ico: '◇' },
+      { href: '/leads', label: 'Tables', ico: '☰' },
+    ],
+  },
+  {
+    group: 'Dogi',
+    items: [
+      { href: '/agents', label: 'Agents', ico: '🐕' },
+      { href: '/settings', label: 'Settings', ico: '⚙' },
     ],
   },
   {
@@ -22,13 +30,13 @@ const NAV: { group: string; items: { href: string; label: string; ico: string }[
     items: [
       { href: '/campaigns', label: 'Campaigns', ico: '✦' },
       { href: '/prompts', label: 'Prompts', ico: '✎' },
-      { href: '/inbox', label: 'Reply inbox', ico: '✉' },
+      { href: '/inbox', label: 'Reply inbox', ico: '@' },
     ],
   },
   {
     group: 'System',
     items: [
-      { href: '/jobs', label: 'Job monitor', ico: '⚙' },
+      { href: '/jobs', label: 'Job monitor', ico: '◷' },
       { href: '/analytics', label: 'Analytics', ico: '▦' },
     ],
   },

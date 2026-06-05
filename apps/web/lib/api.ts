@@ -255,6 +255,36 @@ export const agentsApi = {
   delete: (id: string) => api.del<void>(`/agents/${id}`),
 };
 
+// ── Settings: model + key status (read-only) ──────────────────────────────────
+
+/** Which integration keys the server has configured (in its .env). All booleans. */
+export interface KeyStatus {
+  anthropic: boolean;
+  openai: boolean;
+  gemini: boolean;
+  grok: boolean;
+  apollo: boolean;
+  hunter: boolean;
+  findymail: boolean;
+  dropcontact: boolean;
+  serper: boolean;
+  firecrawl: boolean;
+  instantly: boolean;
+  smartlead: boolean;
+  smtp: boolean;
+}
+
+/** Response from `GET /settings`. */
+export interface Settings {
+  llm: { provider: string; model: string };
+  keys: KeyStatus;
+}
+
+export const settingsApi = {
+  /** Read the server's default model and which integration keys are configured. */
+  get: () => api.get<Settings>('/settings'),
+};
+
 // ── Phase E: Cost estimate ────────────────────────────────────────────────────
 
 export interface CostEstimate {

@@ -13,6 +13,7 @@ import { healthRoutes } from './routes/health';
 import { jobsRoutes } from './routes/jobs';
 import { leadsRoutes } from './routes/leads';
 import { promptsRoutes } from './routes/prompts';
+import { settingsRoutes } from './routes/settings';
 import { tablesRoutes } from './routes/tables';
 import { webhooksRoutes } from './routes/webhooks';
 
@@ -44,6 +45,7 @@ app.route('/campaigns', campaignsRoutes);
 app.route('/prompts', promptsRoutes);
 app.route('/jobs', jobsRoutes);
 app.route('/analytics', analyticsRoutes);
+app.route('/settings', settingsRoutes);
 app.route('/webhooks', webhooksRoutes);
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));
