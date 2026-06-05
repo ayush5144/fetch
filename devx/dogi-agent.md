@@ -1,7 +1,6 @@
 # Dogi — the fetch agent 🐕
 
-**Fetch** is a dog that **fetches**. **Dogi** (a.k.a. **Doggi**) is the agent you
-send to get data. This doc is the working spec: what Dogi is, how it runs, how a
+**Fetch** is a dog that **fetches**. **Dogi** is the agent you send to get data. This doc is the working spec: what Dogi is, how it runs, how a
 user customizes it (simple and advanced), how it can **create columns and chain a
 goal**, and how it maps onto the code we already have.
 
@@ -10,7 +9,7 @@ goal**, and how it maps onto the code we already have.
 > columns, and orchestrates a whole goal on top of Dogi is **Doggo**. The
 > two-agent split (and why the "create columns + chain a goal" part below is
 > really an early **Doggo**) is documented in
-> [doggo-and-doggi.md](./doggo-and-doggi.md) — read that for the architecture.
+> [doggo.md](./doggo.md) — read that for the architecture.
 
 ---
 

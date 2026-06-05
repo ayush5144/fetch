@@ -81,21 +81,21 @@ the grid is usable early and Dogi lands on top of it.
 ---
 
 ## Phase I · Doggo — the autonomous orchestrator (next big direction)
-The cell agent (**Doggi**) only *enriches existing rows*; it cannot *create* them.
+The cell agent (**Dogi**) only *enriches existing rows*; it cannot *create* them.
 A real prompt — *"list the top 10 companies, their CEOs, and LinkedIn profiles"* —
 created the right columns but **zero rows**, so nothing ran. Fix: a second,
 autonomous agent **Doggo** that can **source/create rows**, build & configure
-columns, pick the Doggi per column, and plan→run a whole goal. Defaults to
-**propose-a-plan** (toggle to "just do it"); its settings (and the default Doggi
-config it hands out) are configurable. Doggo uses Doggi as its hands and needs no
-MCP to function. Full design → [doggo-and-doggi.md](./doggo-and-doggi.md).
+columns, pick the Dogi per column, and plan→run a whole goal. Defaults to
+**propose-a-plan** (toggle to "just do it"); its settings (and the default Dogi
+config it hands out) are configurable. Doggo uses Dogi as its hands and needs no
+MCP to function. Full design → [doggo.md](./doggo.md).
 
 ---
 
 ## Session findings & decisions — 2026-06-06 (review, not yet built)
 
 A review of the live product surfaced these. Logged here so the next build picks
-them up; full reasoning in [doggo-and-doggi.md](./doggo-and-doggi.md).
+them up; full reasoning in [doggo.md](./doggo.md).
 
 **Problems found**
 - "Top 10 companies" prompt → 3 correct dogi columns but **0 rows**, nothing ran.
@@ -116,12 +116,12 @@ them up; full reasoning in [doggo-and-doggi.md](./doggo-and-doggi.md).
 - Overview **as a list**, not cards.
 
 **Investigated & cleared**
-- "Is the Doggi config modal only visual?" — **No.** Manually-created dogi columns
+- "Is the Dogi config modal only visual?" — **No.** Manually-created dogi columns
   persist full config in Postgres; the form emits `brain`; `runDogi` consumes
   `sources`/`policy`/`brain` (verified live). Not a bug.
 
 **Already shipped this session** (committed locally, see main checklist)
-- Doggi prompt split (research vs transform) — fixed LLM-only columns returning null.
+- Dogi prompt split (research vs transform) — fixed LLM-only columns returning null.
 - Dedupe **existing** rows from the column `⋯` menu (+ backend + tests).
 - Nav restructure, **Agents** page, **Settings** (key-status) page, `✉→@`.
 

@@ -1,4 +1,4 @@
-# Doggo & Doggi — the two-agent architecture 🐕
+# Doggo & Dogi — the two-agent architecture 🐕
 
 > Status: **PLANNING** — agreed direction, not yet built. This doc is the
 > architecture-of-record for *how the agent layer is split*. The cell agent's
@@ -8,16 +8,16 @@
 
 We were overloading **one** agent ("Dogi") with **two** jobs. We split them:
 
-- **Doggi** — the **cell primitive** and the **interaction layer**. Fills *one
+- **Dogi** — the **cell primitive** and the **interaction layer**. Fills *one
   field for one row* with provenance. Narrow, reliable, auditable. The single
   surface the GUI, MCP, and Doggo all go through to touch Fetch.
 - **Doggo** — the **autonomous orchestrator**. Takes a goal, decides what to do,
   and acts by *creating rows*, *creating/configuring columns*, *picking & tuning
-  a Doggi per column*, and *planning & chaining* — using Doggi as its hands.
+  a Dogi per column*, and *planning & chaining* — using Dogi as its hands.
 
-> **Naming:** we keep **Doggo** / **Doggi** for now (one letter apart — cute as a
+> **Naming:** we keep **Doggo** / **Dogi** for now (one letter apart — cute as a
 > brand, a known confusion risk in code/logs/docs). May rename later. In today's
-> codebase the identifier is `dogi` — read that as **Doggi**.
+> codebase the identifier is `dogi` — read that as **Dogi**.
 
 ---
 
@@ -49,31 +49,31 @@ crammed into the semantics of *one cell per row* instead of becoming *ten rows*.
 
 The agent today only knows **one** verb:
 
-- **ENRICH** *(have)* — given existing rows, fill columns. This is Doggi.
+- **ENRICH** *(have)* — given existing rows, fill columns. This is Dogi.
 - **SOURCE / GENERATE ROWS** *(missing)* — given a description, **create the
   entities** ("the top 10 companies"). Nobody owns this.
 
 This is exactly the Clay split: **"Find companies/people" sources** (which create
 rows) vs **enrichment columns** (which fill them). "Make me a list of N X" is a
-*row-sourcing* task, not a cell task — which is why it can't live in Doggi.
+*row-sourcing* task, not a cell task — which is why it can't live in Dogi.
 
 ---
 
 ## 3. The two agents
 
-| | **Doggi** — the hands | **Doggo** — the brain |
+| | **Dogi** — the hands | **Doggo** — the brain |
 |---|---|---|
 | **Scope** | one field, one row | a whole goal across a table |
 | **Determinism** | narrow, predictable, testable | open-ended, autonomous |
 | **Can create rows?** | **No** (no concept of rows) | **Yes** — this is the headline new power |
-| **Can create/config columns?** | No | Yes — incl. choosing & tuning the Doggi for each |
+| **Can create/config columns?** | No | Yes — incl. choosing & tuning the Dogi for each |
 | **Plans multi-step?** | No | Yes — decompose, order by `dependsOn`, run, chain |
-| **Provenance** | value + confidence + source on every cell | inherits Doggi's, plus an action log |
+| **Provenance** | value + confidence + source on every cell | inherits Dogi's, plus an action log |
 | **Who calls it** | Doggo, the GUI (per-cell run), MCP | a human, the GUI "Ask Doggo", MCP, (later) a schedule |
 | **Today** | exists, works (verified live) | partially exists as the planner; needs row-sourcing + autonomy |
 
-**Doggo is a strict superset of Doggi** — it can always fall back to "just run a
-plain Doggi on this cell." Keeping them separate keeps Doggi simple to trust and
+**Doggo is a strict superset of Dogi** — it can always fall back to "just run a
+plain Dogi on this cell." Keeping them separate keeps Dogi simple to trust and
 test while Doggo is free to be ambitious.
 
 ## 4. Layered architecture
@@ -87,7 +87,7 @@ test while Doggo is free to be ambitious.
         │  DOGGO — autonomous orchestrator ("what should I do?")│
         │   • SOURCES / CREATES rows        ← the gap we found  │
         │   • creates & configures columns                      │
-        │   • picks / tunes a Doggi per column                  │
+        │   • picks / tunes a Dogi per column                  │
         │   • plans a goal, orders by dependsOn, runs & chains  │
         │   • default: PROPOSE a plan → you approve  (toggle: just-do-it) │
         └───────────────────────────┬─────────────────────────┘
@@ -107,7 +107,7 @@ test while Doggo is free to be ambitious.
 ```
 
 The bottom two layers are the **interaction surface**: one set of primitives that
-the GUI, Doggo, and MCP all use. That is what "Doggi is the layer between the
+the GUI, Doggo, and MCP all use. That is what "Dogi is the layer between the
 MCP, the GUI, and the Fetch app" means in practice.
 
 ## 5. How Doggo works
@@ -115,18 +115,18 @@ MCP, the GUI, and the Fetch app" means in practice.
 1. **Take a goal** (natural language) on a table — e.g. *"top 10 AI infra
    companies, their CEOs, and CEO LinkedIn URLs."*
 2. **Plan.** Decompose into steps. Some steps are **row-sourcing** (create the 10
-   companies as rows), others are **columns** (CEO, LinkedIn) with a Doggi config.
+   companies as rows), others are **columns** (CEO, LinkedIn) with a Dogi config.
 3. **Propose → approve (default).** Doggo shows the plan — *"I'll create ~10 rows
    from ‘top 10 AI infra companies’, add columns CEO and CEO LinkedIn, and run
    them."* You approve. **A toggle flips this to "just do it"** (autonomous, no
    approval) for users who trust it.
-4. **Execute.** Create rows → create columns → run Doggis in `dependsOn` order
+4. **Execute.** Create rows → create columns → run Dogis in `dependsOn` order
    (reuse today's dependency-ordered worker). Each cell carries provenance.
 5. **Log.** Every action (rows created, columns added, cells filled, plan chosen)
    is written to `audit_log` and surfaced in an **Agent activity log** view.
 
 **Configurable settings.** Doggo exposes *its own* settings **and** the default
-**Doggi** config it hands to the columns it builds — provider/model (brain),
+**Dogi** config it hands to the columns it builds — provider/model (brain),
 web-search on/off, sources, policy, propose-vs-auto. So "configure Doggo" =
 configure both the orchestrator and the cell agent it spawns.
 
@@ -134,13 +134,13 @@ configure both the orchestrator and the cell agent it spawns.
 
 | Today | Becomes | Work needed |
 |---|---|---|
-| `packages/agent` cell run (`runDogi`) | **Doggi** | none — it *is* Doggi (rename later) |
+| `packages/agent` cell run (`runDogi`) | **Dogi** | none — it *is* Dogi (rename later) |
 | `planner.ts` + `/ask-dogi` + `/apply-plan` (creates+chains columns "for every lead") | early **Doggo** | promote: add **row-sourcing**, add the propose/auto toggle, broaden "for every lead" to "operate the table" |
 | `audit_log` (already written on every action) | the **Agent log** data | surface it in a view |
 | per-table dedupe + dedupe-existing | a table op Doggo can call | already built |
 
 We don't throw anything away — we **re-home the planner into Doggo** and give
-Doggi back its single job.
+Dogi back its single job.
 
 ---
 
@@ -153,11 +153,11 @@ primitives, useful two independent ways:
 1. **Fetch as an MCP _server_** — expose the primitive layer so an *external* AI
    (Claude, etc.) can drive Fetch from outside. Doggo and an external MCP client
    then become **two consumers of the same primitives** — siblings, not a stack.
-2. **Fetch as an MCP _client_** — let Doggo/Doggi *use* external MCP servers as
+2. **Fetch as an MCP _client_** — let Doggo/Dogi *use* external MCP servers as
    extra tools (a CRM, a niche search server). Purely additive capability.
 
 **Design consequence:** build the **primitive/tool layer once** (table ops +
-Doggi cell-fill). Doggo calls it natively; MCP is a thin adapter that wraps the
+Dogi cell-fill). Doggo calls it natively; MCP is a thin adapter that wraps the
 *same* layer. So MCP is "a door in and a door out," never the engine — and it
 comes almost for free once the primitives are clean. Full plan: [mcp.md](./mcp.md).
 
@@ -165,15 +165,15 @@ comes almost for free once the primitives are clean. Full plan: [mcp.md](./mcp.m
 
 ## 8. Decisions locked in this session (2026-06-06)
 
-- **Two agents, kept separate:** **Doggi** (cell primitive / interaction layer) +
-  **Doggo** (autonomous orchestrator). Doggo is a superset that uses Doggi.
+- **Two agents, kept separate:** **Dogi** (cell primitive / interaction layer) +
+  **Doggo** (autonomous orchestrator). Doggo is a superset that uses Dogi.
 - **Row-sourcing is a Doggo capability** ("make a list of N X" creates rows, then
-  Doggi fills the columns). This is the headline next feature.
+  Dogi fills the columns). This is the headline next feature.
 - **Doggo defaults to propose-a-plan** (like Ask-Dogi today) with a **toggle to
   "just do it"** (autonomous).
-- **Doggo's settings are configurable** — both its own and the default Doggi
+- **Doggo's settings are configurable** — both its own and the default Dogi
   config it gives the columns it builds.
-- **Names:** Doggo / Doggi for now; revisit later. Code identifier `dogi` = Doggi.
+- **Names:** Doggo / Dogi for now; revisit later. Code identifier `dogi` = Dogi.
 - **MCP is optional**, a projection of the shared primitive layer; Doggo does not
   depend on it.
 - **A new table starts with one blank row** (index shows `1`), so it's never a
@@ -200,7 +200,7 @@ These came out of the same conversation; tracked in
   `queued → running` and `/cell-jobs` polling; make `running` visually obvious.
 - **Agent activity log** view over `audit_log`.
 - **Overview as a list**, not cards (revisit a past decision).
-- **Config-modal status — investigated & cleared:** the Doggi config modal is
+- **Config-modal status — investigated & cleared:** the Dogi config modal is
   **not** "only visual." A manually-created dogi column persists its full config
   (`sources`/`policy`/`instruction`) in Postgres, the form emits `brain` on
   change, and `runDogi` provably consumes all of it (verified live). If a

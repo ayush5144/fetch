@@ -21,8 +21,8 @@ fills any cell — using your keys or ours."*
 | Doc | What it covers |
 |---|---|
 | [direction.md](./direction.md) | The locked decisions and why. Read this first. |
-| [doggo-and-doggi.md](./doggo-and-doggi.md) | **The two-agent architecture** — **Doggi** (cell primitive / interaction layer) vs **Doggo** (autonomous orchestrator that *creates rows*, builds & configures columns, plans a goal). Why "top 10 companies → 0 rows" happens and how Doggo fixes it; does Doggo need MCP (no); session findings & decisions. |
-| [dogi-agent.md](./dogi-agent.md) | **Dogi / Doggi** — the customizable cell agent: config, web search, brain, sources/policy, **creating columns + goal mode** (the early Doggo), simple vs advanced, saved agents, and the live-verified prompt fix. |
+| [doggo.md](./doggo.md) | **The two-agent architecture** — **Dogi** (cell primitive / interaction layer) vs **Doggo** (autonomous orchestrator that *creates rows*, builds & configures columns, plans a goal). Why "top 10 companies → 0 rows" happens and how Doggo fixes it; does Doggo need MCP (no); session findings & decisions. |
+| [dogi-agent.md](./dogi-agent.md) | **Dogi** — the customizable cell agent: config, web search, brain, sources/policy, **creating columns + goal mode** (the early Doggo), simple vs advanced, saved agents, and the live-verified prompt fix. |
 | [leads-grid.md](./leads-grid.md) | The Clay/Sheets grid: inline `+ column`, per-cell run, cell states, add-row, header menus. |
 | [multi-table.md](./multi-table.md) | Many tables per workspace; Overview creates/picks tables. Data model + migration. |
 | [providers-and-keys.md](./providers-and-keys.md) | Four LLM providers, native vs our web search, BYOK + env keys, cost estimate, OpenClay reuse. |
