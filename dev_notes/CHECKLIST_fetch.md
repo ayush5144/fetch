@@ -432,16 +432,14 @@ The headline gap: the planner only enriches existing rows; nothing **creates** r
 
 ## Phase H - MCP (Project-Wide, Optional, Off Critical Path)
 
-- [ ] Fetch MCP server (read-only first): expose `tables`, `schema`, `rows`, `lead`, `jobs` resources
-  - Test: a local MCP client lists tables and reads a lead's record with provenance.
-- [ ] MCP write tools: create_table/column, add_leads, run_column/run_cell, ask_dogi
-  - Test: run tools return a job id; the client polls `jobs/{id}` to completion (async-native).
-- [ ] Cost/dry-run + gate: `estimate_cost`, a `dryRun` flag, and `launch` honoring validation+approval
-  - Test: a non-eligible lead is never sent via MCP; a dry-run reports cost without firing.
-- [ ] Auth + scoping: reuse `FETCH_API_TOKEN`; read-only vs read-write; per-table scope; audit every action
-  - Test: a read-only token cannot mutate; a scoped token cannot touch another table; actions appear in `audit_log`.
-- [ ] Fetch as MCP client: register an external MCP server; enable it per Dogi as an extra tool
-  - Test: a Dogi with an enabled MCP tool can call it; disabled Dogis cannot; calls are audited.
+- [x] Fetch MCP server (read-only first): expose `tables`, `schema`, `rows`, `lead`, `jobs` resources
+  - `apps/mcp` (@fetch/mcp), stdio, thin adapter over the REST API. Read tools: list_tables, get_table_schema, query_rows (+provenance), get_lead, get_job, recent_activity; also MCP resources (`fetch://tables`, `.../schema`, `.../rows`, `lead/{id}`). Live smoke: tools/list + list_tables returned real data.
+- [x] MCP write tools: create_table/column, add_leads, run_column/run_cell, ask_doggo/run_doggo, dedupe
+  - Run tools return job ids (async-native, poll `get_job`); `ask_doggo` returns a plan, `run_doggo` commits.
+- [~] Cost/dry-run + gate: `estimate_cost` tool + dedupe `preview` shipped; `launch`/sending tools deferred (off critical path).
+- [x] Auth + scoping: reuse `FETCH_API_TOKEN` (optional bearer); **read-only by default** (`FETCH_MCP_READONLY`, writes unregistered in read-only); audit via the API. Per-table scoped tokens deferred.
+  - Test: read-only registry exposes only the 6 read tools; read-write adds the 10 writes; bearer set when token present (unit-tested).
+- [ ] Fetch as MCP client: register an external MCP server; enable it per Dogi as an extra tool — *deferred (inbound direction).* 
 
 ## Ship Gate (Clay/Dogi direction)
 
