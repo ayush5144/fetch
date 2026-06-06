@@ -73,7 +73,10 @@ export class OpenAIClient implements LLMClient {
     };
     // search-preview models reject `temperature`; everything else keeps the 0.2 default.
     if (!searchPreview) body.temperature = opts.temperature ?? 0.2;
-    if (opts.json) body.response_format = { type: 'json_object' };
+    // search-preview models also reject `response_format: json_object` ("not
+    // supported with web_search"). We still ask for JSON in the prompt and parse
+    // it out of the text (parseResult), so JSON mode is omitted for these models.
+    if (opts.json && !searchPreview) body.response_format = { type: 'json_object' };
     if (searchPreview) {
       // Web search is built into this model; enable it via web_search_options
       // (an empty object turns it on with defaults) rather than a function tool.

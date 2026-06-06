@@ -60,6 +60,17 @@ describe('OpenAI chat() with a search-preview model', () => {
     expect(body.web_search_options).toEqual({});
   });
 
+  it('omits response_format even when json is requested (web_search forbids json_object)', async () => {
+    const getBody = stubFetch(OK);
+    await new OpenAIClient('sk-test', 'gpt-4o-mini-search-preview').chat({
+      messages: MESSAGES,
+      json: true,
+    });
+    const body = getBody();
+    expect('response_format' in body).toBe(false);
+    expect(body.web_search_options).toEqual({});
+  });
+
   it('does not forward function tools (search models use built-in search)', async () => {
     const getBody = stubFetch(OK);
     await new OpenAIClient('sk-test', 'gpt-4o-search-preview').chat({
