@@ -472,17 +472,17 @@ From the 2026-06-06 review #2 (two real Doggo runs gave partial results). Diagno
 - [x] **`.env.example`** + opt-in compose `search` profile; `scripts/dev.sh` baseline stays Postgres-only.
 - [x] **Document** `devx/search-and-scrape.md` (as-built + pipeline chart + §10 "why it wasn't working").
 - [x] **Tool-call replay fix** (the real blocker): `LLMMessage.toolCalls`, dogi.ts replays them, all 4 providers serialize the replay; `toolReplay.test.ts`. Verified live: "Hero MotoCorp" → CEO Harshavardhan Chitale + real moneycontrol.com source via OpenSERP+Firecrawl, no 400.
-- [ ] **R3 frontend gap (TODO):** Settings page shows OpenSERP/Firecrawl-selfhosted availability; `DogiConfigForm` gates the web/scrape toggles + a hint when the backend is down (consume `/settings.search`).
+- [x] **R3 frontend gap:** Settings page shows OpenSERP/Firecrawl-selfhosted availability; `DogiConfigForm` gates the web/scrape toggles + a hint when the backend is down (consume `/settings.search`).
 
 ### Round 5 — Arbitrary columns (the data model is Clay-like, not fixed-schema)
 A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first_name/last_name/email/phone/title/linkedin_url`) are a Part-I vestige. The quick-add path drops any non-schema field (e.g. `company`) and `leadContext` hardcodes identity — so a typed company is lost and Dogi has no anchor (the "Wes Schroll" bug). Fix:
-- [ ] **Quick-add stores arbitrary keys in `data`** (`POST /tables/:id/leads` / `manualLeadSchema`): any `{key:value}` becomes a column value; stop dropping non-schema fields. Still mirror recognized identity keys (email, name) to the canonical fields for send/dedupe.
+- [x] **Quick-add stores arbitrary keys in `data`** (`POST /tables/:id/leads` / `manualLeadSchema`): any `{key:value}` becomes a column value; stop dropping non-schema fields. Still mirror recognized identity keys (email, name) to the canonical fields for send/dedupe.
   - Test: add a lead `{company:"Tata", outreach_angle:"x"}` → `data` has both; email still mirrors to canonical.
-- [ ] **`leadContext` surfaces the row's ACTUAL columns** (its real `data`), not a hardcoded identity list — Dogi always sees whatever the table holds.
+- [x] **`leadContext` surfaces the row's ACTUAL columns** (its real `data`), not a hardcoded identity list — Dogi always sees whatever the table holds.
   - Test: a Dogi with `reads:[]` still sees the row's `company`/other columns.
-- [ ] **Optional data-ready field templates** (frontend, completely optional): the add-column picker offers common presets — name / first_name / last_name / email / phone / title / linkedin_url / company — each with the right value type (email→email, linkedin→url…). Picking one is a convenience; columns remain fully arbitrary.
+- [x] **Optional data-ready field templates** (frontend, completely optional): the add-column picker offers common presets — name / first_name / last_name / email / phone / title / linkedin_url / company — each with the right value type (email→email, linkedin→url…). Picking one is a convenience; columns remain fully arbitrary.
   - Test: choosing "Email" creates an `email`-typed column; a custom name still works.
-- [ ] Keep `email`/name canonical mirroring for sending/dedupe/validation (don't rip out the outreach pipeline).
+- [x] Keep `email`/name canonical mirroring for sending/dedupe/validation (don't rip out the outreach pipeline).
 
 ### Audit (2026-06-06): job monitor + activity are functional
 - [x] `/jobs` + `/jobs/summary` show real pg-boss status (grouped); `/activity` shows real `audit_log` (incl. `enrich_failed`). Confirmed functional — the only front/back gap is the R3 frontend item above.
