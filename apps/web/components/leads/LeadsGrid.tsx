@@ -9,6 +9,7 @@ import { CellPeek } from './CellPeek';
 import { ImportModal } from './ImportModal';
 import { AskBoneModal } from './AskBoneModal';
 import { Modal } from '@/components/Modal';
+import { predefinedFieldByKey } from '@/lib/predefinedFields';
 
 /**
  * Clay-style spreadsheet grid for a single table.
@@ -49,6 +50,14 @@ const COLUMN_ICONS: Record<string, string> = {
 };
 
 function columnIcon(col: Column): string {
+  // Recognize a predefined common field by the column's key first (so a
+  // `company` text column shows 🏢 instead of the generic `T`). We only do this
+  // for plain value columns — a dogi/formula column keeps its provenance icon
+  // (🐕 / ƒ) even if its key happens to match a predefined field.
+  if (col.type !== 'dogi' && col.type !== 'formula') {
+    const predefined = predefinedFieldByKey(col.key);
+    if (predefined) return predefined.icon;
+  }
   return COLUMN_ICONS[col.config?.valueType ?? ''] ?? COLUMN_ICONS[col.type] ?? 'T';
 }
 

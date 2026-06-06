@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DogiConfigForm, type DogiConfig, type SearchAvailability } from './DogiConfigForm';
 import { agentsApi, type ValueType, type FillMethod, type Column, type SavedAgent } from '@/lib/api';
+import { PREDEFINED_FIELDS } from '@/lib/predefinedFields';
 
 /**
  * Inline popover for creating or editing a column. Anchored next to the
@@ -42,27 +43,13 @@ const TYPES: TypeDef[] = [
 ];
 
 /**
- * Optional quick-pick presets for common data-ready fields. Picking one
- * pre-fills the column name + value type (and snake_cases the key via the same
- * derivation as a typed name). Purely a convenience — the user can ignore them
- * and type a fully custom name/type instead. Email → email, LinkedIn URL → url,
- * everything else → text (Phone is text, holding a phone number).
+ * Optional quick-pick presets for common data-ready fields come from the shared
+ * predefined-fields registry (single source of truth — see
+ * lib/predefinedFields.ts / devx/predefined-fields.md). Picking one pre-fills
+ * the column name + value type (and snake_cases the key via the same derivation
+ * as a typed name). Purely a convenience — the user can ignore them and type a
+ * fully custom name/type instead.
  */
-interface FieldTemplate {
-  label: string;
-  /** Which TYPES value type to select. */
-  valueType: ValueType;
-}
-const FIELD_TEMPLATES: FieldTemplate[] = [
-  { label: 'Name',         valueType: 'text' },
-  { label: 'First name',   valueType: 'text' },
-  { label: 'Last name',    valueType: 'text' },
-  { label: 'Email',        valueType: 'email' },
-  { label: 'Phone',        valueType: 'text' },
-  { label: 'Title',        valueType: 'text' },
-  { label: 'LinkedIn URL', valueType: 'url' },
-  { label: 'Company',      valueType: 'text' },
-];
 
 const DEFAULT_DOGI_CONFIG: DogiConfig = {
   instruction: '',
@@ -286,9 +273,9 @@ export function AddColumnPopover({
             <div style={{ marginBottom: 12 }}>
               <div className="type-picker-section">Common fields (optional)</div>
               <div className="field-templates">
-                {FIELD_TEMPLATES.map((t) => (
+                {PREDEFINED_FIELDS.map((t) => (
                   <button
-                    key={t.label}
+                    key={t.key}
                     type="button"
                     className="field-template-chip"
                     title={`Pre-fill name + ${t.valueType} type`}
@@ -301,6 +288,7 @@ export function AddColumnPopover({
                       if (td) setSelectedType(td);
                     }}
                   >
+                    <span className="field-template-icon" aria-hidden>{t.icon}</span>
                     {t.label}
                   </button>
                 ))}

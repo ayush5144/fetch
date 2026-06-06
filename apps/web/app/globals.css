@@ -1256,6 +1256,9 @@ table.grid-tbl {
   margin-bottom: 12px;
 }
 .field-template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink-soft);
@@ -1265,6 +1268,10 @@ table.grid-tbl {
   background: var(--bg);
   cursor: pointer;
   transition: border-color 0.1s, background 0.1s, color 0.1s;
+}
+.field-template-icon {
+  font-size: 12px;
+  line-height: 1;
 }
 .field-template-chip:hover {
   border-color: var(--accent);
