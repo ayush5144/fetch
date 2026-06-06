@@ -499,10 +499,10 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
   - Test: a `company`-keyed column renders 🏢; picking "Company" creates a `company` text column; an arbitrary column is unaffected; web typecheck clean.
 
 ### Round 7 — Dashboard polish (simple, clean UX)
-- [ ] **Overview: rename a table** (in the existing `⋯` menu alongside Delete → `PATCH /tables/:id`, inline edit or small prompt) + **search/filter** the table list by name.
-- [ ] **Table page: heading shows the table name** (not the generic "Leads"), with **rename + delete** there too (a small menu by the heading).
-- [ ] **Search within a table**: a search box filters the visible rows (client-side over loaded leads; case-insensitive across cell values).
-- [ ] Keep it minimal + consistent with existing tokens; no backend change beyond reusing `PATCH /tables/:id` (+ optionally a single-table read if cleaner).
+- [x] **Overview: rename a table** (in the existing `⋯` menu alongside Delete → `PATCH /tables/:id`, inline edit or small prompt) + **search/filter** the table list by name.
+- [x] **Table page: heading shows the table name** (not the generic "Leads"), with **rename + delete** there too (a small menu by the heading).
+- [x] **Search within a table**: a search box filters the visible rows (client-side over loaded leads; case-insensitive across cell values).
+- [x] Keep it minimal + consistent with existing tokens; no backend change beyond reusing `PATCH /tables/:id` (+ optionally a single-table read if cleaner).
   - Test: rename persists + reflects in Overview and the heading; table search filters the list; row search filters rows; web typecheck clean.
 
 ### Round 8 — Column header: provenance + type (PLANNING — see below)
