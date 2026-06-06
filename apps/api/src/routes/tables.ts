@@ -23,7 +23,6 @@ import {
 } from '@fetch/agent';
 import { getLLM } from '@fetch/llm';
 import {
-  CsvNormalizer,
   identityFieldFor,
   parseCsvRecords,
   previewCsv,
@@ -31,6 +30,7 @@ import {
   snakeCase,
 } from '@fetch/connectors';
 import type { ImportMapping } from '@fetch/connectors';
+import type { CanonicalLead } from '@fetch/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 /**
@@ -106,14 +106,61 @@ tablesRoutes.get('/:id/leads', async (c) => {
   return c.json({ leads: rows });
 });
 
-const manualLeadSchema = z.object({
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  email: z.string().email().optional(),
-  title: z.string().optional(),
-  company: z.string().optional(),
-  domain: z.string().optional(),
-});
+/**
+ * Quick-add accepts an ARBITRARY object — a Fetch table is arbitrary columns, so
+ * every provided key must survive into `leads.data` (Clay/Airtable-style). We
+ * validate `email` as an email when present, but otherwise passthrough so a typed
+ * `{ company, outreach_angle, … }` is never silently dropped. An empty body still
+ * creates a blank "+ new lead" row.
+ */
+const manualLeadSchema = z.object({ email: z.string().email().optional() }).passthrough();
+
+/**
+ * Build a CanonicalLead from a quick-add body. EVERY key lands in `data` verbatim
+ * (so it's visible as a grid cell), and recognized identity keys are ALSO mirrored
+ * to the canonical lead columns so sending/dedupe keep working. A recognized key
+ * can live in both `data` and its canonical slot. Mirrors `sourcedRowToCanonical`.
+ */
+function quickAddToCanonical(body: Record<string, unknown>): CanonicalLead {
+  const data: Record<string, unknown> = {};
+  // Preserve every provided key (skipping blanks) into data verbatim.
+  for (const [k, v] of Object.entries(body)) {
+    if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) continue;
+    data[k] = typeof v === 'string' ? v.trim() : v;
+  }
+
+  const canonical: CanonicalLead = { data };
+  const str = (k: string): string | undefined => {
+    const v = data[k];
+    return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined;
+  };
+
+  // Mirror recognized identity keys to canonical columns (accepting both camel and
+  // snake aliases). The values STAY in `data` too, so they remain visible cells.
+  const email = str('email');
+  if (email) canonical.email = email.toLowerCase();
+
+  const first = str('firstName') ?? str('first_name');
+  const last = str('lastName') ?? str('last_name');
+  const name = str('name') ?? str('full_name');
+  if (first || last) {
+    if (first) canonical.firstName = first;
+    if (last) canonical.lastName = last;
+  } else if (name) {
+    const [f, ...rest] = name.split(/\s+/);
+    canonical.firstName = f ?? null;
+    canonical.lastName = rest.length ? rest.join(' ') : null;
+  }
+
+  const phone = str('phone');
+  if (phone) canonical.phone = phone;
+  const title = str('title');
+  if (title) canonical.title = title;
+  const linkedin = str('linkedinUrl') ?? str('linkedin_url') ?? str('linkedin');
+  if (linkedin) canonical.linkedinUrl = linkedin;
+
+  return canonical;
+}
 
 /** Create one blank/manual lead in a table (the grid's "+ new lead"). */
 tablesRoutes.post('/:id/leads', async (c) => {
@@ -121,11 +168,7 @@ tablesRoutes.post('/:id/leads', async (c) => {
   const body = manualLeadSchema.parse(await c.req.json().catch(() => ({})));
   const [source] = await db.insert(sources).values({ type: 'manual', raw: body }).returning();
 
-  const canonical = new CsvNormalizer().normalize(
-    `first_name,last_name,email,title,company\n${[body.firstName, body.lastName, body.email, body.title, body.company]
-      .map((v) => (v ?? '').replace(/,/g, ' '))
-      .join(',')}`,
-  )[0]!;
+  const canonical = quickAddToCanonical(body as Record<string, unknown>);
 
   const { lead, created } = await ingestLead(canonical, { sourceId: source!.id, tableId, actor: 'user' });
   if (created) {

@@ -342,3 +342,67 @@ describe('POST /tables/:id/run — run runnable columns over rows', () => {
     expect((enrichJobs[0]!.payload as any).columnKey).toBe('ceo_email');
   });
 });
+
+describe('POST /tables/:id/leads — quick-add stores arbitrary keys in data', () => {
+  // Quick-add can enqueue a `validate` job for a lead with an email, so the queue
+  // must be running for the handler not to throw.
+  beforeAll(startQueues);
+  afterAll(stopQueues);
+  beforeEach(truncateAll);
+
+  async function quickAdd(body: unknown) {
+    const res = await app.request(`/tables/${T}/leads`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { res, json: await res.json() };
+  }
+
+  it('writes EVERY provided key into leads.data (the company/note anchor fix)', async () => {
+    const { res, json } = await quickAdd({ company: 'Tata', note: 'x' });
+    expect(res.status).toBe(201);
+    const data = json.lead.data as Record<string, unknown>;
+    expect(data.company).toBe('Tata');
+    expect(data.note).toBe('x');
+  });
+
+  it('mirrors recognized identity to canonical AND keeps it in data', async () => {
+    const { json } = await quickAdd({ email: 'a@b.com', company: 'X' });
+    // arbitrary key landed in data
+    expect((json.lead.data as any).company).toBe('X');
+    // recognized identity mirrored to the canonical column for send/dedupe
+    expect(json.lead.email).toBe('a@b.com');
+    // and the email is also visible as a data cell
+    expect((json.lead.data as any).email).toBe('a@b.com');
+  });
+
+  it('splits a full name into first/last and mirrors title/linkedin', async () => {
+    const { json } = await quickAdd({
+      name: 'Wes Schroll',
+      title: 'CEO',
+      linkedin_url: 'https://linkedin.com/in/wes',
+      company: 'Fetch',
+    });
+    expect(json.lead.firstName).toBe('Wes');
+    expect(json.lead.lastName).toBe('Schroll');
+    expect(json.lead.title).toBe('CEO');
+    expect(json.lead.linkedinUrl).toBe('https://linkedin.com/in/wes');
+    expect((json.lead.data as any).company).toBe('Fetch');
+  });
+
+  it('an empty body still creates a blank "+ new lead" row', async () => {
+    const { res, json } = await quickAdd({});
+    expect(res.status).toBe(201);
+    expect(json.created).toBe(true);
+    expect(json.lead.email).toBeNull();
+    expect(json.lead.data).toEqual({});
+  });
+
+  it('rejects an invalid email', async () => {
+    const { res } = await quickAdd({ email: 'not-an-email', company: 'X' });
+    expect(res.status).toBe(500); // zod parse throws → handler 500s, lead not created
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(rows).toHaveLength(0);
+  });
+});

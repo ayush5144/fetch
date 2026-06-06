@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const { getLLM } = vi.hoisted(() => ({ getLLM: vi.fn() }));
 vi.mock('@fetch/llm', () => ({ getLLM }));
 
-import { runDogi, type DogiConfig, type DogiRunContext } from '../src/dogi';
+import { leadContext, runDogi, type DogiConfig, type DogiRunContext } from '../src/dogi';
 
 /**
  * Phase C — the Dogi resolver. Pure unit tests with mocked sources + LLM:
@@ -99,5 +99,48 @@ describe('runDogi', () => {
     const config: DogiConfig = { instruction: 'x', sources: [{ type: 'provider', name: 'apollo' }] };
     const res = await runDogi(config, { field: 'f', lead, waterfallFor: () => fakeWaterfall(null) });
     expect(res).toBeNull();
+  });
+});
+
+describe('leadContext', () => {
+  it("surfaces the row's data columns even when reads is empty (the anchor fix)", () => {
+    const row = { id: 'l1', email: null, firstName: null, lastName: null, data: { company: 'Hero MotoCorp', note: 'x' } } as any;
+    const ctx = JSON.parse(leadContext(row, []));
+    // No reads allow-list → ALL data columns are visible, so Dogi has an anchor.
+    expect(ctx.company).toBe('Hero MotoCorp');
+    expect(ctx.note).toBe('x');
+  });
+
+  it('merges canonical identity with the row data columns', () => {
+    const row = {
+      id: 'l1',
+      email: 'ava@acme.com',
+      firstName: 'Ava',
+      lastName: 'Lee',
+      title: 'CEO',
+      linkedinUrl: null,
+      data: { company: 'Acme', segment: 'smb' },
+    } as any;
+    const ctx = JSON.parse(leadContext(row));
+    expect(ctx.name).toBe('Ava Lee');
+    expect(ctx.email).toBe('ava@acme.com');
+    expect(ctx.company_domain).toBe('acme.com');
+    expect(ctx.title).toBe('CEO');
+    expect(ctx.company).toBe('Acme');
+    expect(ctx.segment).toBe('smb');
+  });
+
+  it('a non-empty reads scopes which data columns are surfaced', () => {
+    const row = { id: 'l1', email: null, data: { company: 'Acme', secret: 'hide-me' } } as any;
+    const ctx = JSON.parse(leadContext(row, ['company']));
+    expect(ctx.company).toBe('Acme');
+    expect(ctx.secret).toBeUndefined();
+  });
+
+  it('omits internal blobs from the context', () => {
+    const row = { id: 'l1', email: null, data: { company: 'Acme', provenance: { huge: true } } } as any;
+    const ctx = JSON.parse(leadContext(row));
+    expect(ctx.company).toBe('Acme');
+    expect(ctx.provenance).toBeUndefined();
   });
 });

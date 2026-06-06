@@ -94,17 +94,45 @@ ${OUTPUT_CONTRACT}
 Work only from the provided context — do not invent external facts. Return value
 null only when the context genuinely lacks what you need.`;
 
-function leadContext(lead: Lead, reads?: string[]): string {
+/**
+ * The lead's `data` keys we never feed the model — internal/huge blobs that would
+ * just bloat the prompt without anchoring the answer.
+ */
+const CONTEXT_OMIT = new Set(['provenance', '_provenance', 'raw', '__raw']);
+
+/**
+ * Build the JSON context a Dogi sees for one lead. A Fetch table is arbitrary
+ * columns, so the model must see the row's ACTUAL columns (`lead.data`) — not a
+ * fixed identity shape. With no anchor (e.g. only a `company` cell) the model
+ * free-associates and hallucinates; surfacing the row's own columns fixes that.
+ *
+ * We merge: the canonical identity fields (where present, for sending/dedupe
+ * parlance) PLUS every value in `lead.data` (the table's real columns). The
+ * `reads` allow-list, when given, scopes/orders which `data` keys to include;
+ * with no `reads` we include all of `data` so context is never empty. Internal
+ * blobs (provenance/raw) are omitted to keep the prompt sane.
+ */
+export function leadContext(lead: Lead, reads?: string[]): string {
   const data = (lead.data as Record<string, unknown>) ?? {};
-  const base: Record<string, unknown> = {
-    name: [lead.firstName, lead.lastName].filter(Boolean).join(' ') || null,
-    email: lead.email,
-    title: lead.title,
-    company_domain: lead.email?.split('@')[1] ?? null,
-    linkedin: lead.linkedinUrl,
-  };
-  // Surface only the columns the Dogi is allowed to read (plus the base identity).
-  for (const key of reads ?? []) {
+  const base: Record<string, unknown> = {};
+
+  // Canonical identity first — only when present, so an arbitrary row isn't
+  // padded with a wall of nulls.
+  const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ');
+  if (name) base.name = name;
+  if (lead.email) {
+    base.email = lead.email;
+    base.company_domain = lead.email.split('@')[1] ?? null;
+  }
+  if (lead.title) base.title = lead.title;
+  if (lead.linkedinUrl) base.linkedin = lead.linkedinUrl;
+
+  // The row's real columns. A non-empty `reads` scopes/orders which keys we
+  // surface; with no `reads` we include EVERY data column so the model always
+  // has the table's anchor (company, etc.), even for columns not in `reads`.
+  const keys = reads && reads.length > 0 ? reads : Object.keys(data);
+  for (const key of keys) {
+    if (CONTEXT_OMIT.has(key)) continue;
     if (key in data) base[key] = data[key];
   }
   return JSON.stringify(base);
