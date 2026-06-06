@@ -151,6 +151,38 @@ describe('sourceRows', () => {
     expect(system).toMatch(/distinct/i);
   });
 
+  // ── Append dedupe: `exclude` (known-issue #4) ───────────────────────────────
+  it('injects `exclude` into the prompt and filters excluded primaries out', async () => {
+    // The model ignores the instruction and returns one excluded + two new ones.
+    const llm = fakeLLM('[{"company":"Tesla"},{"company":"BYD"},{"company":"Rivian"}]');
+    getLLM.mockReturnValue(llm);
+    const { rows } = await sourceRows({
+      description: 'EV companies',
+      count: 3,
+      fields: ['company'],
+      exclude: ['tesla'], // already exists (lowercased)
+    });
+    // Tesla is dropped (case-insensitive); only the genuinely-new ones survive.
+    expect(rows.map((r) => r.company)).toEqual(['BYD', 'Rivian']);
+
+    // The exclusion is also injected into BOTH the system+user prompt content.
+    const userMsg = (llm.chat.mock.calls[0]![0] as { messages: { role: string; content: string }[] })
+      .messages.find((m) => m.role === 'user')!.content;
+    expect(userMsg).toMatch(/already exist/i);
+    expect(userMsg).toMatch(/tesla/i);
+  });
+
+  it('returns [] when every sourced row is already excluded', async () => {
+    getLLM.mockReturnValue(fakeLLM('[{"company":"Tesla"},{"company":"BYD"}]'));
+    const { rows } = await sourceRows({
+      description: 'EV companies',
+      count: 2,
+      fields: ['company'],
+      exclude: ['tesla', 'byd'],
+    });
+    expect(rows).toEqual([]);
+  });
+
   it('returns rows: [] when the LLM call throws (never fatal)', async () => {
     getLLM.mockReturnValue({
       provider: 'openai',

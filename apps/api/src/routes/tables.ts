@@ -523,6 +523,62 @@ async function enqueueRootRuns(tableId: string, rootKeys: string[], apiKey?: str
   return enqueued;
 }
 
+/**
+ * The table's existing values for `field`, read from `leads.data[field]`,
+ * lowercased + trimmed (blanks dropped). Used to tell `sourceRows` which
+ * primary values already exist so a re-source generates only NEW entities, and
+ * to drop returned rows that already exist (append-dedupe, known-issue #4).
+ */
+async function existingPrimaryValues(tableId: string, field: string): Promise<Set<string>> {
+  const rows = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+  const out = new Set<string>();
+  for (const lead of rows) {
+    const v = (lead.data as Record<string, unknown> | null)?.[field];
+    if (v == null) continue;
+    const s = String(v).trim().toLowerCase();
+    if (s !== '') out.add(s);
+  }
+  return out;
+}
+
+/**
+ * Source NEW deduped rows for one source-rows step and insert them. BEFORE
+ * sourcing, the table's existing primaryField values are passed as `exclude` so
+ * the model skips them; AFTER sourcing, any returned row whose primaryField
+ * value already exists is dropped (belt-and-suspenders, case-insensitive).
+ * Only the genuinely-new rows are inserted; if none are new, nothing is inserted
+ * (and 0 is returned). Returns the ACTUAL count of leads created.
+ */
+async function sourceDedupedRows(
+  tableId: string,
+  step: { description: string; count: number; primaryField: string },
+  count: number,
+  brain?: DogiBrain,
+  apiKey?: string,
+): Promise<number> {
+  const existing = await existingPrimaryValues(tableId, step.primaryField);
+  const { rows } = await sourceRows({
+    description: step.description,
+    count,
+    fields: [step.primaryField],
+    brain,
+    apiKey,
+    exclude: [...existing],
+  });
+  // Belt-and-suspenders: drop anything that already exists despite the prompt.
+  const fresh = rows.filter(
+    (r) => !existing.has(String(r[step.primaryField] ?? '').trim().toLowerCase()),
+  );
+  if (fresh.length === 0) return 0;
+
+  const [source] = await db
+    .insert(sources)
+    .values({ type: 'manual', raw: { source: step.description, count } })
+    .returning();
+  const { created } = await insertSourcedRows(fresh, { tableId, sourceId: source!.id, actor: 'bone' });
+  return created;
+}
+
 // ── Goal mode (Phase D): Ask Dogi → plan → apply ──────────────────────────────
 
 const askDogiSchema = z.object({
@@ -660,6 +716,12 @@ const boneRunSchema = z.object({
   }),
   /** Optional BYOK key threaded to created columns' runs; never persisted. */
   apiKey: z.string().optional(),
+  /**
+   * Build-and-run (default) vs Build only. When `false`, create the rows +
+   * columns exactly as usual but SKIP enqueuing any runs (response
+   * `enqueued: 0`). Lets the UI offer a "Build only" opt-out (known-issue #5).
+   */
+  run: z.boolean().default(true),
 });
 
 /**
@@ -762,13 +824,20 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
   let rowsCreated = 0;
   let primaryColsCreated = 0;
   for (const step of sourceSteps) {
-    const { rows } = await sourceRows({
+    // Source NEW deduped rows (excludes existing primary values + drops dupes).
+    // A fresh table has nothing to exclude, so this is the normal initial source.
+    const existing = await existingPrimaryValues(tableId, step.primaryField);
+    const { rows: sourced } = await sourceRows({
       description: step.description,
       count: step.count,
       fields: [step.primaryField],
       brain,
       apiKey: body.apiKey,
+      exclude: [...existing],
     });
+    const rows = sourced.filter(
+      (r) => !existing.has(String(r[step.primaryField] ?? '').trim().toLowerCase()),
+    );
     if (rows.length === 0) continue;
 
     // Materialize the primary column (idempotent by key). Negative position keeps
@@ -826,8 +895,9 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
     if (key) flowColumnKeys.add(key);
   }
 
-  // 3) Enqueue the root columns across ALL leads (incl. newly sourced).
-  const enqueued = await enqueueRootRuns(tableId, rootKeys, body.apiKey);
+  // 3) Enqueue the root columns across ALL leads (incl. newly sourced) — unless
+  //    this is a Build-only run (`run:false`), in which case we enqueue nothing.
+  const enqueued = body.run ? await enqueueRootRuns(tableId, rootKeys, body.apiKey) : 0;
 
   // 4) Persist the flow so it can be re-run as a unit. Read-modify-write
   //    settings.flows (like settings.bone), never clobbering sibling settings.
@@ -874,25 +944,93 @@ type FlowEntry = {
 };
 
 const flowRunSchema = z.object({
-  /** Append ~this many more rows by re-running the flow's source steps (1–50). */
+  /**
+   * Re-run mode (known-issue #6). Defaults to `retry` for back-compat with the
+   * old `{ sourceMore?, force? }` body:
+   *  - `replace` — CLEAR the flow's column cells for ALL leads, then re-enqueue
+   *    so they re-run & overwrite.
+   *  - `retry`   — enqueue run-only-if-empty (failed/empty cells re-run, filled
+   *    cells skipped).
+   *  - `addNew`  — source `sourceMore` NEW deduped rows and enqueue the flow's
+   *    columns ONLY for those new lead ids (existing cells untouched).
+   */
+  mode: z.enum(['replace', 'retry', 'addNew']).default('retry'),
+  /** Source ~this many NEW deduped rows first (clamped 1–50). */
   sourceMore: z.number().int().positive().optional(),
-  /** Re-fill: clear the flow's column cells first so they re-run (else only-if-empty). */
-  force: z.boolean().default(false),
   /** Optional BYOK key threaded to the runs; never persisted. */
   apiKey: z.string().optional(),
 });
 
 /**
- * Re-run a persisted Bone flow as a unit (Round 9). Looks the flow up in
- * `table.settings.flows` (404 if the table or flow is unknown), then:
+ * Source `sourceMore` NEW deduped rows for a flow's source steps, returning the
+ * total created AND the ids of the leads created in this call (so `addNew` can
+ * scope its enqueue to only the new rows). Splits the requested count across the
+ * flow's source steps and clamps the total to 1–50.
+ */
+async function sourceMoreForFlow(
+  tableId: string,
+  flow: FlowEntry,
+  sourceMore: number,
+  brain?: DogiBrain,
+  apiKey?: string,
+): Promise<{ rowsCreated: number; newLeadIds: string[] }> {
+  if (!(sourceMore > 0) || flow.sourceSteps.length === 0) {
+    return { rowsCreated: 0, newLeadIds: [] };
+  }
+  // Snapshot the lead ids present BEFORE sourcing so we can diff out the new ones.
+  const before = new Set(
+    (await db.query.leads.findMany({ where: eq(leads.tableId, tableId) })).map((l) => l.id),
+  );
+
+  const total = Math.max(1, Math.min(50, sourceMore));
+  const per = Math.max(1, Math.ceil(total / flow.sourceSteps.length));
+  let rowsCreated = 0;
+  for (const step of flow.sourceSteps) {
+    rowsCreated += await sourceDedupedRows(tableId, step, per, brain, apiKey);
+  }
+
+  const after = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+  const newLeadIds = after.filter((l) => !before.has(l.id)).map((l) => l.id);
+  return { rowsCreated, newLeadIds };
+}
+
+/**
+ * Enqueue a flow's runnable (dogi) ROOT columns over a specific set of lead ids,
+ * run-only-if-empty. `addNew` scopes this to only the newly-created leads;
+ * `replace`/`retry` pass all the table's lead ids. Dependents chain in the
+ * worker. Returns the number of jobs enqueued.
+ */
+async function enqueueFlowRoots(
+  rootKeys: string[],
+  leadRows: Array<typeof leads.$inferSelect>,
+  apiKey?: string,
+): Promise<number> {
+  let enqueued = 0;
+  for (const key of rootKeys) {
+    for (const lead of leadRows) {
+      if (!isCellEmpty(lead, key)) continue;
+      await enqueue('enrich', { leadId: lead.id, columnKey: key, apiKey }, { leadId: lead.id });
+      enqueued++;
+    }
+  }
+  return enqueued;
+}
+
+/**
+ * Re-run a persisted Bone flow as a unit (Round 9; modes from known-issue #6).
+ * Looks the flow up in `table.settings.flows` (404 if the table or flow is
+ * unknown), then runs one of three modes:
  *
- *  1. If `sourceMore > 0`: re-run the flow's `sourceSteps` to APPEND ~that many
- *     rows (clamped 1–50; the table's dedupe still applies, so re-sourcing the
- *     same list won't duplicate), reusing `sourceRows` + `insertSourcedRows`.
- *  2. Enqueue ALL the flow's runnable (dogi) columns across the table's leads in
- *     dependency order (reusing `enqueueRootRuns`; dependents chain in the
- *     worker). Default run-only-if-empty; with `force`, the flow's column cells
- *     are CLEARED first so every cell re-runs.
+ *  - `replace` — CLEAR the flow's column cells for ALL leads, then enqueue the
+ *    flow's root columns so they re-run & overwrite. Honors `sourceMore`.
+ *  - `retry`   — enqueue the flow's root columns run-only-if-empty (failed/empty
+ *    cells re-run, filled cells skipped). Honors `sourceMore`.
+ *  - `addNew`  — source `sourceMore` NEW deduped rows and enqueue the flow's
+ *    columns ONLY for those new lead ids (existing cells untouched). If 0 new
+ *    rows, enqueue nothing.
+ *
+ * All sourcing goes through the append-dedupe helper (excludes existing primary
+ * values + drops dupes), so re-sourcing the same list never duplicates.
  *
  * Returns `{ rowsCreated, columnsRun, enqueued }`. Audited with the flow id.
  */
@@ -911,38 +1049,8 @@ tablesRoutes.post('/:id/flow/:flowId/run', async (c) => {
   const boneSettings = (table.settings as { bone?: { brain?: DogiBrain } } | null)?.bone ?? undefined;
   const brain = boneSettings?.brain;
 
-  // 1) Optionally source MORE rows by re-running the flow's source steps. We
-  //    clamp the requested count 1–50 and split it across the flow's source
-  //    steps (so a multi-source flow still respects the ceiling).
-  let rowsCreated = 0;
-  if (body.sourceMore && body.sourceMore > 0 && flow.sourceSteps.length > 0) {
-    const total = Math.max(1, Math.min(50, body.sourceMore));
-    const per = Math.max(1, Math.ceil(total / flow.sourceSteps.length));
-    for (const step of flow.sourceSteps) {
-      const { rows } = await sourceRows({
-        description: step.description,
-        count: per,
-        fields: [step.primaryField],
-        brain,
-        apiKey: body.apiKey,
-      });
-      if (rows.length === 0) continue;
-      const [source] = await db
-        .insert(sources)
-        .values({ type: 'manual', raw: { flow: flowId, description: step.description, count: per } })
-        .returning();
-      const { created } = await insertSourcedRows(rows, {
-        tableId,
-        sourceId: source!.id,
-        actor: 'bone',
-      });
-      rowsCreated += created;
-    }
-  }
-
-  // 2) Resolve the flow's RUNNABLE (dogi) columns. We enqueue only the ROOTS
-  //    (no flow-internal dependency); the worker chains dependents per lead as
-  //    each input fills (apps/worker enrich handler), exactly like /bone/run.
+  // Resolve the flow's RUNNABLE (dogi) columns + its ROOT keys (no flow-internal
+  // dependency). The worker chains dependents per lead as each input fills.
   const cols = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
   const flowKeySet = new Set(flow.columnKeys);
   const runnable = cols.filter((col) => flowKeySet.has(col.key) && col.type === 'dogi');
@@ -955,26 +1063,61 @@ tablesRoutes.post('/:id/flow/:flowId/run', async (c) => {
     })
     .map((col) => col.key);
 
-  // With `force`, clear ALL the flow's column cells so the whole flow re-runs;
-  // else run-only-if-empty leaves filled cells untouched. Clearing the dependents
-  // too means the chain re-fills them as their (re-cleared) inputs come back.
-  if (body.force) {
-    const leadIds = (await db.query.leads.findMany({ where: eq(leads.tableId, tableId) })).map(
-      (l) => l.id,
-    );
-    for (const col of runnable) await clearCells(leadIds, col.key);
-  }
+  let rowsCreated = 0;
+  let enqueued = 0;
 
-  // Enqueue the flow's root columns across all leads (run-only-if-empty after the
-  // clear); dependents chain in the worker.
-  const enqueued = await enqueueRootRuns(tableId, rootKeys, body.apiKey);
+  if (body.mode === 'addNew') {
+    // Source NEW deduped rows; enqueue the flow's roots ONLY over those new leads.
+    const { rowsCreated: rc, newLeadIds } = await sourceMoreForFlow(
+      tableId,
+      flow,
+      body.sourceMore ?? 0,
+      brain,
+      body.apiKey,
+    );
+    rowsCreated = rc;
+    if (newLeadIds.length > 0) {
+      const newLeads = await db.query.leads.findMany({
+        where: and(eq(leads.tableId, tableId), inArray(leads.id, newLeadIds)),
+      });
+      enqueued = await enqueueFlowRoots(rootKeys, newLeads, body.apiKey);
+    }
+  } else {
+    // replace / retry — optionally source more deduped rows first, then enqueue
+    // over ALL of the table's leads.
+    if (body.sourceMore && body.sourceMore > 0) {
+      const { rowsCreated: rc } = await sourceMoreForFlow(
+        tableId,
+        flow,
+        body.sourceMore,
+        brain,
+        body.apiKey,
+      );
+      rowsCreated = rc;
+    }
+
+    // `replace` clears the flow's column cells for ALL leads so they overwrite;
+    // `retry` leaves filled cells untouched (run-only-if-empty).
+    const allLeads = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+    if (body.mode === 'replace') {
+      const leadIds = allLeads.map((l) => l.id);
+      for (const col of runnable) await clearCells(leadIds, col.key);
+    }
+
+    // Re-read after clearing so isCellEmpty reflects the cleared cells.
+    const leadsForRun =
+      body.mode === 'replace'
+        ? await db.query.leads.findMany({ where: eq(leads.tableId, tableId) })
+        : allLeads;
+    enqueued = await enqueueFlowRoots(rootKeys, leadsForRun, body.apiKey);
+  }
 
   await audit({
     entity: 'table',
     entityId: tableId,
     action: 'flow_run',
     actor: 'bone',
-    diff: { flowId, rowsCreated, columnsRun: runnable.length, enqueued, force: body.force },
+    diff: { flowId, mode: body.mode, rowsCreated, columnsRun: runnable.length, enqueued },
   });
 
   return c.json({ rowsCreated, columnsRun: runnable.length, enqueued });

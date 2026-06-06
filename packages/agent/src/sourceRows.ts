@@ -31,6 +31,13 @@ export interface SourceRowsInput {
   brain?: DogiBrain;
   /** BYOK key for this call; never persisted or logged. */
   apiKey?: string;
+  /**
+   * Already-present PRIMARY values to exclude (the first/primary `fields` value,
+   * lowercased). They're injected into the prompt ("do NOT include these, they
+   * already exist") AND filtered out of the parsed result (case-insensitive on
+   * the primary field) — so a re-source generates only genuinely-NEW entities.
+   */
+  exclude?: string[];
 }
 
 export interface SourceRowsResult {
@@ -102,6 +109,7 @@ async function generateOnce(
   want: number,
   extra?: string,
   log?: ReturnType<typeof logger.child>,
+  excludeSet?: Set<string>,
 ): Promise<Array<Record<string, unknown>>> {
   let text = '';
   try {
@@ -127,6 +135,7 @@ async function generateOnce(
   }
 
   const raw = parseRowsJson(text) ?? [];
+  const primary = fields[0]!;
   const rows: Array<Record<string, unknown>> = [];
   for (const el of raw) {
     if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
@@ -141,7 +150,10 @@ async function generateOnce(
         hasValue = true;
       }
     }
-    if (hasValue) rows.push(row);
+    if (!hasValue) continue;
+    // Drop anything the caller said already exists (case-insensitive on primary).
+    if (excludeSet?.has(String(row[primary] ?? '').trim().toLowerCase())) continue;
+    rows.push(row);
   }
   return rows;
 }
@@ -175,6 +187,19 @@ export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResu
   }
   const provider = `${llm.provider}:${llm.model}`;
 
+  // Already-present primary values to exclude (lowercased, blanks dropped).
+  const excludeSet = new Set(
+    (input.exclude ?? []).map((v) => v.trim().toLowerCase()).filter((v) => v !== ''),
+  );
+  // A prompt fragment telling the model to skip the existing entities. Cap the
+  // listed names so a huge table doesn't blow the prompt; the result is also
+  // filtered, so anything that slips through is still dropped.
+  const excludeFragment = excludeSet.size
+    ? `\nDo NOT include any of these — they already exist: ${[...excludeSet]
+        .slice(0, 200)
+        .join('; ')}.`
+    : '';
+
   // First pass: ask for the full count, dedupe within the batch.
   const seen = new Set<string>();
   const rows: Array<Record<string, unknown>> = [];
@@ -188,14 +213,24 @@ export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResu
     }
   };
 
-  add(await generateOnce(llm, input.description, fields, count, undefined, log));
+  add(
+    await generateOnce(
+      llm,
+      input.description,
+      fields,
+      count,
+      excludeFragment || undefined,
+      log,
+      excludeSet,
+    ),
+  );
 
   // Exactly ONE re-prompt for the remainder when short (no infinite loop).
   if (rows.length < count) {
     const remaining = count - rows.length;
     const had = rows.map((r) => fields.map((f) => String(r[f] ?? '')).join(' / ')).join('; ');
-    const extra = `You already returned these — do NOT repeat them: ${had}.\nReturn ${remaining} MORE distinct entities of the same kind, as a JSON array.`;
-    add(await generateOnce(llm, input.description, fields, remaining, extra, log));
+    const extra = `You already returned these — do NOT repeat them: ${had}.\nReturn ${remaining} MORE distinct entities of the same kind, as a JSON array.${excludeFragment}`;
+    add(await generateOnce(llm, input.description, fields, remaining, extra, log, excludeSet));
   }
 
   log.info('sourceRows produced rows', { produced: rows.length, requested: count });

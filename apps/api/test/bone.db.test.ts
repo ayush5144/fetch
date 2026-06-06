@@ -211,6 +211,73 @@ describe('POST /tables/:id/bone/run', () => {
     expect(res.status).toBe(400);
   });
 
+  it('Build only (`run:false`) creates rows + columns but enqueues 0 (#5)', async () => {
+    sourceRows.mockResolvedValue({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }, { company: 'Rivian' }],
+      provider: 'openai:test',
+    });
+
+    const res = await post(`/tables/${T}/bone/run`, { plan, run: false });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Rows + columns are still created...
+    expect(body.rowsCreated).toBe(3);
+    expect(body.columnsCreated).toBe(1);
+    // ...but nothing is enqueued.
+    expect(body.enqueued).toBe(0);
+
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(rows).toHaveLength(3);
+    const cols = await db.query.columns.findMany({ where: eq(columns.tableId, T) });
+    expect(cols.find((cc) => cc.key === 'ceo')).toBeTruthy();
+    const enrichJobs = await db.query.jobs.findMany({ where: eq(jobs.type, 'enrich') });
+    expect(enrichJobs).toHaveLength(0);
+  });
+
+  it('re-source EXCLUDES existing primaries and inserts only NEW rows (#4)', async () => {
+    // First run sources Tesla + BYD.
+    sourceRows.mockResolvedValueOnce({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+    await post(`/tables/${T}/bone/run`, { plan });
+
+    // Second run: the model (ignoring the exclude prompt) returns Tesla again +
+    // a new Rivian. The route's post-filter drops Tesla → only Rivian inserts.
+    sourceRows.mockResolvedValueOnce({
+      rows: [{ company: 'Tesla' }, { company: 'Rivian' }],
+      provider: 'openai:test',
+    });
+    const res = await post(`/tables/${T}/bone/run`, { plan });
+    expect((await res.json()).rowsCreated).toBe(1); // only Rivian is new
+
+    // The existing primaries were passed as `exclude` to sourceRows.
+    const secondCall = sourceRows.mock.calls.at(-1)![0];
+    expect(new Set(secondCall.exclude)).toEqual(new Set(['tesla', 'byd']));
+
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(rows.map((r) => (r.data as any).company).sort()).toEqual(['BYD', 'Rivian', 'Tesla']);
+  });
+
+  it('re-source inserts 0 when every entity already exists (#4)', async () => {
+    sourceRows.mockResolvedValueOnce({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+    await post(`/tables/${T}/bone/run`, { plan });
+
+    // Re-source the same two — all overlap → 0 created.
+    sourceRows.mockResolvedValueOnce({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+    const res = await post(`/tables/${T}/bone/run`, { plan });
+    expect((await res.json()).rowsCreated).toBe(0);
+
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(rows).toHaveLength(2);
+  });
+
   it('404s for an unknown table', async () => {
     const res = await post(`/tables/nope/bone/run`, { plan });
     expect(res.status).toBe(404);
@@ -260,34 +327,20 @@ describe('POST /tables/:id/flow/:flowId/run', () => {
     return (await res.json()).flowId as string;
   }
 
-  it('appends ~sourceMore rows and enqueues the flow columns', async () => {
-    const flowId = await runBone();
-    // Clear the enrich jobs from the initial bone/run so we count only the re-run.
-    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
-
-    // The flow re-run sources 2 MORE companies and re-fills the ceo column.
-    sourceRows.mockResolvedValue({
-      rows: [{ company: 'Rivian' }, { company: 'Lucid' }],
-      provider: 'openai:test',
-    });
-    const res = await post(`/tables/${T}/flow/${flowId}/run`, { sourceMore: 2 });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.rowsCreated).toBe(2); // 2 sourced rows appended
-    expect(body.columnsRun).toBe(1); // the ceo column
-
-    // 4 leads now (2 from bone/run + 2 appended), none blank.
+  /** Fill the ceo cell on every current lead (simulate a completed flow run). */
+  async function fillCeoCells() {
     const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
-    expect(rows).toHaveLength(4);
-
-    // The ceo column was enqueued across the empty cells.
-    const enrichJobs = await db.query.jobs.findMany({ where: eq(jobs.type, 'enrich') });
-    expect(enrichJobs.length).toBe(body.enqueued);
-    expect(enrichJobs.every((j) => (j.payload as any).columnKey === 'ceo')).toBe(true);
-  });
+    for (const r of rows) {
+      await db
+        .update(leads)
+        .set({ data: { ...(r.data as any), ceo: 'Someone' } })
+        .where(eq(leads.id, r.id));
+    }
+    return rows;
+  }
 
   it('404s for an unknown flow', async () => {
-    const res = await post(`/tables/${T}/flow/flow_nope/run`, { sourceMore: 1 });
+    const res = await post(`/tables/${T}/flow/flow_nope/run`, { mode: 'retry' });
     expect(res.status).toBe(404);
   });
 
@@ -296,31 +349,97 @@ describe('POST /tables/:id/flow/:flowId/run', () => {
     expect(res.status).toBe(404);
   });
 
-  it('force clears filled cells so they re-run', async () => {
+  it('mode `retry` skips filled cells (run-only-if-empty)', async () => {
     const flowId = await runBone();
     await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+    await fillCeoCells();
 
-    // Simulate the ceo cells being filled.
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, { mode: 'retry' });
+    expect(res.status).toBe(200);
+    // All ceo cells are filled → nothing re-enqueues.
+    expect((await res.json()).enqueued).toBe(0);
+  });
+
+  it('mode `retry` re-runs only the empty/failed cells', async () => {
+    const flowId = await runBone(); // 2 leads
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+    // Fill ceo on only ONE lead; the other stays empty (a "failed" cell).
     const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
-    for (const r of rows) {
-      await db
-        .update(leads)
-        .set({ data: { ...(r.data as any), ceo: 'Someone' } })
-        .where(eq(leads.id, r.id));
-    }
+    await db
+      .update(leads)
+      .set({ data: { ...(rows[0]!.data as any), ceo: 'Someone' } })
+      .where(eq(leads.id, rows[0]!.id));
 
-    // Without force: filled cells are skipped → nothing enqueued.
-    const noForce = await post(`/tables/${T}/flow/${flowId}/run`, {});
-    expect((await noForce.json()).enqueued).toBe(0);
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, { mode: 'retry' });
+    expect((await res.json()).enqueued).toBe(1); // only the empty one
+  });
 
-    // With force: cells are cleared first → all re-enqueue.
-    const forced = await post(`/tables/${T}/flow/${flowId}/run`, { force: true });
-    const fbody = await forced.json();
-    expect(fbody.enqueued).toBe(rows.length);
+  it('mode `replace` clears filled cells then re-enqueues ALL', async () => {
+    const flowId = await runBone();
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+    const rows = await fillCeoCells();
 
-    // The values were cleared from data.
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, { mode: 'replace' });
+    const body = await res.json();
+    expect(body.enqueued).toBe(rows.length); // every cell re-enqueues
+
+    // The ceo values were cleared from data.
     const after = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
     for (const r of after) expect((r.data as any).ceo).toBeUndefined();
+  });
+
+  it('mode `addNew` sources deduped rows + enqueues ONLY the new leads', async () => {
+    const flowId = await runBone(); // Tesla + BYD
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+    // Fill ceo on the two existing leads so we can prove they are NOT re-enqueued.
+    await fillCeoCells();
+
+    // addNew sources 2 more — one overlaps (Tesla, dropped) + one new (Rivian).
+    sourceRows.mockResolvedValueOnce({
+      rows: [{ company: 'Tesla' }, { company: 'Rivian' }],
+      provider: 'openai:test',
+    });
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, { mode: 'addNew', sourceMore: 2 });
+    const body = await res.json();
+    expect(body.rowsCreated).toBe(1); // only Rivian is new
+
+    // The new lead carried the exclude of the existing primaries.
+    const lastCall = sourceRows.mock.calls.at(-1)![0];
+    expect(new Set(lastCall.exclude)).toEqual(new Set(['tesla', 'byd']));
+
+    // Only the NEW lead's ceo cell is enqueued (existing filled cells untouched).
+    expect(body.enqueued).toBe(1);
+    const enrichJobs = await db.query.jobs.findMany({ where: eq(jobs.type, 'enrich') });
+    expect(enrichJobs).toHaveLength(1);
+    const newLead = (await db.query.leads.findMany({ where: eq(leads.tableId, T) })).find(
+      (l) => (l.data as any).company === 'Rivian',
+    )!;
+    expect(enrichJobs[0]!.leadId).toBe(newLead.id);
+    expect((enrichJobs[0]!.payload as any).columnKey).toBe('ceo');
+  });
+
+  it('mode `addNew` with 0 new rows enqueues nothing', async () => {
+    const flowId = await runBone(); // Tesla + BYD
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+
+    // Source the same two — both overlap → 0 new → 0 enqueued.
+    sourceRows.mockResolvedValueOnce({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, { mode: 'addNew', sourceMore: 2 });
+    const body = await res.json();
+    expect(body.rowsCreated).toBe(0);
+    expect(body.enqueued).toBe(0);
+  });
+
+  it('defaults to `retry` when no mode is given (back-compat)', async () => {
+    const flowId = await runBone();
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+    await fillCeoCells();
+    // Empty body → retry → filled cells skipped → 0 enqueued.
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, {});
+    expect((await res.json()).enqueued).toBe(0);
   });
 });
 
