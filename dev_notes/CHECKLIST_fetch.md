@@ -514,13 +514,13 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
   - Test: a Bone-sourced Company column hover shows "Text · by Bone"; a dogi column shows "… · by Dogi"; a user column shows "by User"; web typecheck clean.
 
 ### Round 8.1 — Hover tooltip polish (fix the native title)
-- [ ] Replace the native `title=` (slow ~1s, black browser default) with a **styled, instant, on-brand tooltip** for the column-header provenance/type. Consistent with the UI (light card / `--ink` text / `--border` hairline / subtle shadow), appears immediately on hover, no clipping. Keep it minimal — reuse tokens.
+- [x] Replace the native `title=` (slow ~1s, black browser default) with a **styled, instant, on-brand tooltip** for the column-header provenance/type. Consistent with the UI (light card / `--ink` text / `--border` hairline / subtle shadow), appears immediately on hover, no clipping. Keep it minimal — reuse tokens.
   - Test: hovering a header shows the styled tooltip promptly; typecheck clean.
 
 ### Round 9 — Run-the-whole-flow: a Bone agent as a re-runnable unit
 Decided: **toolbar "Run flow ▷"** (default) + an **optional dedicated agent column** toggled via a **per-table settings modal**. Per-column run stays as-is.
-- [ ] **Persist the flow** on `POST /tables/:id/bone/run`: store the flow (id, name from goal, steps, the column keys it created) in `table.settings.flows[]`; tag each created column with `config.flowId`.
-- [ ] **Run-flow endpoint** `POST /tables/:id/flow/:flowId/run` `{ sourceMore?: number, force?: boolean }` → optionally append `sourceMore` rows (re-run the source-rows steps) + enqueue all the flow's columns in **dependency order** (run-only-if-empty by default; `force` re-fills). Returns `{ rowsCreated, columnsRun, enqueued }`.
+- [x] **Persist the flow** on `POST /tables/:id/bone/run`: store the flow (id, name from goal, steps, the column keys it created) in `table.settings.flows[]`; tag each created column with `config.flowId`.
+- [x] **Run-flow endpoint** `POST /tables/:id/flow/:flowId/run` `{ sourceMore?: number, force?: boolean }` → optionally append `sourceMore` rows (re-run the source-rows steps) + enqueue all the flow's columns in **dependency order** (run-only-if-empty by default; `force` re-fills). Returns `{ rowsCreated, columnsRun, enqueued }`.
 - [ ] **Toolbar "Run flow ▷"** (frontend): clean + minimal; names the flow and **clearly states it will run all of {Company, CEO, CEO LinkedIn}**; a confirm (with an optional "add N more rows") before firing; shows the result summary.
 - [ ] **Per-table settings modal** (frontend): opened from the table heading `⋯` menu ("Table settings"); houses an **agent-column on/off toggle** (`table.settings.agentColumn`) — and is the natural home for dedupe / Bone defaults later. Minimal, consistent.
 - [ ] **Optional agent column** (when toggled on): a column representing the flow whose ▷ runs the whole flow (value-less control column). Off by default.
