@@ -200,6 +200,10 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   // ── Column context menu
   const [colMenu, setColMenu] = useState<{ col: Column; rect: DOMRect } | null>(null);
 
+  // ── Header hover tooltip (instant, on-brand; fixed-positioned so the grid's
+  // overflow/scroll never clips it)
+  const [thTip, setThTip] = useState<{ col: Column; x: number; y: number } | null>(null);
+
   // ── Rename inline
   const [renameCol, setRenameCol] = useState<{ col: Column; rect: DOMRect } | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -899,7 +903,11 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
                 >
                   <div
                     className="grid-th-inner"
-                    title={`${valueTypeLabel(col)} · by ${columnProvenance(col)}`}
+                    onMouseEnter={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setThTip({ col, x: r.left + r.width / 2, y: r.bottom + 6 });
+                    }}
+                    onMouseLeave={() => setThTip((t) => (t?.col.id === col.id ? null : t))}
                   >
                     <span className="grid-th-icon">{columnIcon(col)}</span>
                     <span className="grid-th-label">{col.label}</span>
@@ -1094,6 +1102,21 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           onDelete={() => deleteColumn(colMenu.col)}
           onClose={() => setColMenu(null)}
         />
+      )}
+
+      {/* Column-header hover tooltip — fixed-positioned so it is never clipped
+          by the grid's horizontal/vertical scroll overflow. */}
+      {thTip && (
+        <div
+          className="grid-th-tip"
+          style={{
+            top: thTip.y,
+            left: Math.max(8, Math.min(thTip.x, window.innerWidth - 8)),
+          }}
+        >
+          {valueTypeLabel(thTip.col)} · by{' '}
+          <span className="grid-th-tip-prov">{columnProvenance(thTip.col)}</span>
+        </div>
       )}
 
       {/* Rename inline popover */}
