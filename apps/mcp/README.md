@@ -3,13 +3,13 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets an
 external AI (Claude Desktop, Cursor, a custom agent) **operate a Fetch
 workspace**: list tables, read rows with provenance, run Dogi enrichment, ask
-Doggo for a plan, and more.
+Bone for a plan, and more.
 
 It is a **thin adapter over the Fetch REST API** — it holds no business logic and
 never touches the database. Every action goes through the same HTTP API the web
 UI uses, so auth, validation gates, dedupe, audit, and provenance are reused.
 (Design: [`devx/mcp.md`](../../devx/mcp.md); it is a *projection* of the primitive
-layer, per [`devx/doggo.md`](../../devx/doggo.md) §7 — never a parallel brain.)
+layer, per [`devx/bone.md`](../../devx/bone.md) §7 — never a parallel brain.)
 
 This is an **opt-in** app. It ships only when you run it; it is not part of the
 baseline API/worker/web stack.
@@ -56,12 +56,12 @@ called. Set `FETCH_MCP_READONLY=false` to expose the write tools.
   enqueued count
 - `run_cell` `{leadId, columnKey}` → async, returns a job id
 - `dedupe` `{tableId, keys, preview?}` (`preview: true` is a dry run)
-- `ask_doggo` `{tableId, goal}` → returns a **plan to approve** (does NOT execute)
-- `run_doggo` `{tableId, plan}` → executes an approved plan (the explicit commit)
+- `ask_bone` `{tableId, goal}` → returns a **plan to approve** (does NOT execute)
+- `run_bone` `{tableId, plan}` → executes an approved plan (the explicit commit)
 - `estimate_cost` `{provider, model, rows, webSearch?}`
 
 Run tools are async-native: they return job ids / enqueued counts; poll `get_job`
-for completion. `ask_doggo` → `run_doggo` is the human-in-the-loop pattern (the
+for completion. `ask_bone` → `run_bone` is the human-in-the-loop pattern (the
 agent proposes a plan; a human/policy commits it).
 
 ## Resources

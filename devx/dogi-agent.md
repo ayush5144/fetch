@@ -6,10 +6,10 @@ goal**, and how it maps onto the code we already have.
 
 > **Where this sits in the bigger picture:** Dogi is the **cell primitive** — it
 > fills *one field for one row*. The autonomous agent that *creates rows*, builds
-> columns, and orchestrates a whole goal on top of Dogi is **Doggo**. The
+> columns, and orchestrates a whole goal on top of Dogi is **Bone**. The
 > two-agent split (and why the "create columns + chain a goal" part below is
-> really an early **Doggo**) is documented in
-> [doggo.md](./doggo.md) — read that for the architecture.
+> really an early **Bone**) is documented in
+> [bone.md](./bone.md) — read that for the architecture.
 
 ---
 

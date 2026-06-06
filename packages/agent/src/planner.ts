@@ -43,11 +43,11 @@ export interface DogiPlan {
   steps: DogiPlanStep[];
 }
 
-// ── Doggo plan (row-sourcing + columns) ───────────────────────────────────────
-// Doggo is a superset of the column planner: a plan step is EITHER a row-sourcing
+// ── Bone plan (row-sourcing + columns) ───────────────────────────────────────
+// Bone is a superset of the column planner: a plan step is EITHER a row-sourcing
 // step (CREATE rows) or a column step (today's DogiPlanStep — enrich rows). A
 // step with NO `kind` is treated as `'column'`, so existing apply-plan/ask-dogi
-// callers keep working unchanged. See devx/doggo.md §3/§5.
+// callers keep working unchanged. See devx/bone.md §3/§5.
 
 /** A step that CREATES rows: generate `count` entities and insert them as leads. */
 export interface SourceRowsStep {
@@ -65,12 +65,12 @@ export interface SourceRowsStep {
 /** A column step is today's DogiPlanStep, tagged with `kind: 'column'`. */
 export type ColumnStep = { kind: 'column' } & DogiPlanStep;
 
-/** One Doggo plan step: create rows, or build/enrich a column. */
-export type DoggoPlanStep = SourceRowsStep | ColumnStep;
+/** One Bone plan step: create rows, or build/enrich a column. */
+export type BonePlanStep = SourceRowsStep | ColumnStep;
 
-export interface DoggoPlan {
+export interface BonePlan {
   goal: string;
-  steps: DoggoPlanStep[];
+  steps: BonePlanStep[];
 }
 
 /** A step with no `kind` is a legacy column step (back-compat). */
@@ -79,7 +79,7 @@ export function isSourceRowsStep(step: { kind?: string }): step is SourceRowsSte
 }
 
 /** Normalize any plan step into a tagged column step (the back-compat default). */
-export function asColumnStep(step: DoggoPlanStep | DogiPlanStep): ColumnStep {
+export function asColumnStep(step: BonePlanStep | DogiPlanStep): ColumnStep {
   if ('kind' in step && step.kind === 'column') return step;
   // Strip a possible `kind` field, then re-tag as a column step.
   const { kind: _kind, ...rest } = step as ColumnStep;
@@ -98,7 +98,7 @@ export interface PlanContext {
   apiKey?: string;
 }
 
-const SYSTEM = `You are Doggo's planner inside Fetch, a B2B lead workspace.
+const SYSTEM = `You are Bone's planner inside Fetch, a B2B lead workspace.
 The user gives you a GOAL. You decompose it into an ordered list of "steps".
 A step is EITHER:
   (A) a row-sourcing step that CREATES rows (entities) in the table, or
@@ -265,13 +265,13 @@ function parsePlanJson(text: string): { steps?: unknown } | null {
 
 /**
  * The shared planner: one LLM call, then defensive normalization into a full
- * Doggo plan (row-sourcing steps + column steps). Returns `null` when no LLM is
+ * Bone plan (row-sourcing steps + column steps). Returns `null` when no LLM is
  * configured. Column output keys are snake_cased and made unique; the sourced
  * primaryField counts as a "known key" so a column may depend on it. `dependsOn`
  * is filtered to keys that actually exist among earlier steps + sourced fields,
  * so the dependency graph is always sound.
  */
-async function runPlanner(goal: string, ctx: PlanContext): Promise<DoggoPlan | null> {
+async function runPlanner(goal: string, ctx: PlanContext): Promise<BonePlan | null> {
   const log = logger.child({ goal });
 
   const opts: GetLLMOptions = {};
@@ -314,7 +314,7 @@ async function runPlanner(goal: string, ctx: PlanContext): Promise<DoggoPlan | n
   // column. A step with no `kind` is treated as a column (back-compat).
   const sourcedKeys = new Set<string>(); // primaryFields the sourcing steps create
   const usedKeys = new Set<string>();
-  const steps: DoggoPlanStep[] = [];
+  const steps: BonePlanStep[] = [];
   const columnSteps: ColumnStep[] = [];
 
   for (let i = 0; i < rawSteps.length; i++) {
@@ -355,11 +355,11 @@ async function runPlanner(goal: string, ctx: PlanContext): Promise<DoggoPlan | n
 }
 
 /**
- * Plan a goal into the FULL Doggo plan — ordered row-sourcing steps (create
- * rows) and column steps (enrich rows). This is what `/doggo/plan` returns and
- * `/doggo/run` executes. Returns `null` when no LLM is configured.
+ * Plan a goal into the FULL Bone plan — ordered row-sourcing steps (create
+ * rows) and column steps (enrich rows). This is what `/bone/plan` returns and
+ * `/bone/run` executes. Returns `null` when no LLM is configured.
  */
-export async function planDoggo(goal: string, ctx: PlanContext = {}): Promise<DoggoPlan | null> {
+export async function planBone(goal: string, ctx: PlanContext = {}): Promise<BonePlan | null> {
   return runPlanner(goal, ctx);
 }
 

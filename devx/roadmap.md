@@ -80,27 +80,27 @@ the grid is usable early and Dogi lands on top of it.
 
 ---
 
-## Phase I · Doggo — the autonomous orchestrator (next big direction)
+## Phase I · Bone — the autonomous orchestrator (next big direction)
 The cell agent (**Dogi**) only *enriches existing rows*; it cannot *create* them.
 A real prompt — *"list the top 10 companies, their CEOs, and LinkedIn profiles"* —
 created the right columns but **zero rows**, so nothing ran. Fix: a second,
-autonomous agent **Doggo** that can **source/create rows**, build & configure
+autonomous agent **Bone** that can **source/create rows**, build & configure
 columns, pick the Dogi per column, and plan→run a whole goal. Defaults to
 **propose-a-plan** (toggle to "just do it"); its settings (and the default Dogi
-config it hands out) are configurable. Doggo uses Dogi as its hands and needs no
-MCP to function. Full design → [doggo.md](./doggo.md).
+config it hands out) are configurable. Bone uses Dogi as its hands and needs no
+MCP to function. Full design → [bone.md](./bone.md).
 
 ---
 
 ## Session findings & decisions — 2026-06-06 (review, not yet built)
 
 A review of the live product surfaced these. Logged here so the next build picks
-them up; full reasoning in [doggo.md](./doggo.md).
+them up; full reasoning in [bone.md](./bone.md).
 
 **Problems found**
 - "Top 10 companies" prompt → 3 correct dogi columns but **0 rows**, nothing ran.
   Root cause: the planner only adds columns "for every lead"; there is **no
-  row-creation** anywhere. → Doggo (Phase I).
+  row-creation** anywhere. → Bone (Phase I).
 - New tables start with **0 rows** — an empty grid is a dead end ("no rows yet").
 - No obvious **loading state** while an agent works (the machinery exists:
   `queued → running` cell states + `/cell-jobs` polling — just not loud).
@@ -111,7 +111,7 @@ them up; full reasoning in [doggo.md](./doggo.md).
 - New table seeds **one blank row** (index `1`); checkbox + index columns are
   already structural — no preset content columns.
 - Make the **`running`** cell state visually obvious (spinner/pulse + a header
-  "Doggo working…" hint).
+  "Bone working…" hint).
 - Add an **Agent activity log** view over `audit_log` (next to Jobs).
 - Overview **as a list**, not cards.
 

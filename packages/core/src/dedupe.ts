@@ -435,7 +435,7 @@ export interface SourcedRowsResult {
 
 /**
  * A "blank" lead is the one a fresh table is seeded with: no email AND no
- * meaningful `data` keys. It's a guaranteed-failing empty row, so when Doggo
+ * meaningful `data` keys. It's a guaranteed-failing empty row, so when Bone
  * sources entities we fill it in place instead of leaving it as a dead first row.
  */
 function isBlankLead(lead: Lead): boolean {

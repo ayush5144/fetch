@@ -603,8 +603,8 @@ table.tbl {
   border-top: 1px solid var(--border);
 }
 
-/* ── Ask Doggo modal ────────────────────────────────────────────────────────*/
-.doggo-step {
+/* ── Ask Bone modal ────────────────────────────────────────────────────────*/
+.bone-step {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -613,12 +613,12 @@ table.tbl {
   flex-direction: column;
   gap: 10px;
 }
-.doggo-step-source {
+.bone-step-source {
   border-color: var(--accent);
   background: var(--surface);
 }
 
-.doggo-toggle {
+.bone-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -627,19 +627,19 @@ table.tbl {
   cursor: pointer;
   user-select: none;
 }
-.doggo-toggle input {
+.bone-toggle input {
   width: 15px;
   height: 15px;
   accent-color: var(--accent);
   cursor: pointer;
 }
 
-.doggo-settings {
+.bone-settings {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
-.doggo-settings-head {
+.bone-settings-head {
   width: 100%;
   display: flex;
   align-items: center;
@@ -654,29 +654,29 @@ table.tbl {
   font-weight: 600;
   color: var(--ink);
 }
-.doggo-settings-body {
+.bone-settings-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 0 14px 14px;
 }
 
-.doggo-banner {
+.bone-banner {
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-size: 13px;
 }
-.doggo-banner-amber {
+.bone-banner-amber {
   background: var(--amber-soft);
   border: 1px solid var(--amber);
   color: var(--amber);
 }
-.doggo-banner-red {
+.bone-banner-red {
   background: var(--red-soft);
   border: 1px solid var(--red);
   color: var(--red);
 }
-.doggo-banner-green {
+.bone-banner-green {
   background: var(--green-soft);
   border: 1px solid var(--green);
   color: var(--green);

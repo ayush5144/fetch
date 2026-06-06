@@ -180,11 +180,11 @@ audit, and provenance are reused. Config: `FETCH_API_URL`
 **Write tools (only when `FETCH_MCP_READONLY=false` — not even listed otherwise):**
 `create_table`, `create_column`, `add_leads`, `update_cell`, `run_column`,
 `run_cell` (async → job ids; poll `get_job`), `dedupe` (with a `preview` dry-run),
-`ask_doggo` (returns a plan, never auto-runs), `run_doggo` (the explicit commit),
+`ask_bone` (returns a plan, never auto-runs), `run_bone` (the explicit commit),
 `estimate_cost`.
 
 Honored qualities (§3): same primitives as the UI/REST, async-native run tools,
-provenance in row/lead responses, human-in-the-loop (`ask_doggo` → `run_doggo`),
+provenance in row/lead responses, human-in-the-loop (`ask_bone` → `run_bone`),
 pagination on `query_rows`, least-privilege (read-only default + optional bearer).
 
 **Deferred:** streamable-HTTP / remote transport (stdio only for now);

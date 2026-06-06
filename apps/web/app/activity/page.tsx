@@ -6,7 +6,7 @@ import { activityApi, type AuditRow } from '@/lib/api';
 
 /**
  * Activity — a workspace-wide feed over `audit_log` (Phase G.2c). Shows what
- * people and agents (Dogi/Doggo) did: columns created, cells filled, rows
+ * people and agents (Dogi/Bone) did: columns created, cells filled, rows
  * merged/deleted, sends. Newest first, paginated with "Load more".
  *
  * Fetches on mount via activityApi.list(); no polling — this is a history view.

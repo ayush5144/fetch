@@ -3,7 +3,7 @@ import { getLLM, type GetLLMOptions } from '@fetch/llm';
 import type { DogiBrain } from './dogi';
 
 /**
- * Row-sourcing — Doggo's headline new power (devx/doggo.md §2). The existing
+ * Row-sourcing — Bone's headline new power (devx/bone.md §2). The existing
  * planner + Dogi can only ENRICH rows that already exist; nobody could CREATE
  * them. `sourceRows` is that missing verb: given a description ("top 10 EV
  * companies") and a count, it asks an LLM for a JSON ARRAY of entities, each an
@@ -39,7 +39,7 @@ export interface SourceRowsResult {
   provider: string;
 }
 
-const SYSTEM = `You are Doggo's row-sourcing agent inside Fetch, a B2B workspace.
+const SYSTEM = `You are Bone's row-sourcing agent inside Fetch, a B2B workspace.
 The user describes a LIST of real-world entities to create (e.g. "top 10 EV
 companies", "the largest US banks"). Produce that list.
 

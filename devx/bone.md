@@ -1,4 +1,4 @@
-# Doggo & Dogi — the two-agent architecture 🐕
+# Bone & Dogi — the two-agent architecture 🐕
 
 > Status: **PLANNING** — agreed direction, not yet built. This doc is the
 > architecture-of-record for *how the agent layer is split*. The cell agent's
@@ -10,12 +10,12 @@ We were overloading **one** agent ("Dogi") with **two** jobs. We split them:
 
 - **Dogi** — the **cell primitive** and the **interaction layer**. Fills *one
   field for one row* with provenance. Narrow, reliable, auditable. The single
-  surface the GUI, MCP, and Doggo all go through to touch Fetch.
-- **Doggo** — the **autonomous orchestrator**. Takes a goal, decides what to do,
+  surface the GUI, MCP, and Bone all go through to touch Fetch.
+- **Bone** — the **autonomous orchestrator**. Takes a goal, decides what to do,
   and acts by *creating rows*, *creating/configuring columns*, *picking & tuning
   a Dogi per column*, and *planning & chaining* — using Dogi as its hands.
 
-> **Naming:** we keep **Doggo** / **Dogi** for now (one letter apart — cute as a
+> **Naming:** we keep **Bone** / **Dogi** for now (one letter apart — cute as a
 > brand, a known confusion risk in code/logs/docs). May rename later. In today's
 > codebase the identifier is `dogi` — read that as **Dogi**.
 
@@ -61,7 +61,7 @@ rows) vs **enrichment columns** (which fill them). "Make me a list of N X" is a
 
 ## 3. The two agents
 
-| | **Dogi** — the hands | **Doggo** — the brain |
+| | **Dogi** — the hands | **Bone** — the brain |
 |---|---|---|
 | **Scope** | one field, one row | a whole goal across a table |
 | **Determinism** | narrow, predictable, testable | open-ended, autonomous |
@@ -69,12 +69,12 @@ rows) vs **enrichment columns** (which fill them). "Make me a list of N X" is a
 | **Can create/config columns?** | No | Yes — incl. choosing & tuning the Dogi for each |
 | **Plans multi-step?** | No | Yes — decompose, order by `dependsOn`, run, chain |
 | **Provenance** | value + confidence + source on every cell | inherits Dogi's, plus an action log |
-| **Who calls it** | Doggo, the GUI (per-cell run), MCP | a human, the GUI "Ask Doggo", MCP, (later) a schedule |
+| **Who calls it** | Bone, the GUI (per-cell run), MCP | a human, the GUI "Ask Bone", MCP, (later) a schedule |
 | **Today** | exists, works (verified live) | partially exists as the planner; needs row-sourcing + autonomy |
 
-**Doggo is a strict superset of Dogi** — it can always fall back to "just run a
+**Bone is a strict superset of Dogi** — it can always fall back to "just run a
 plain Dogi on this cell." Keeping them separate keeps Dogi simple to trust and
-test while Doggo is free to be ambitious.
+test while Bone is free to be ambitious.
 
 ## 4. Layered architecture
 
@@ -84,7 +84,7 @@ test while Doggo is free to be ambitious.
          \                     |                             /
           ▼                    ▼                            ▼
         ┌─────────────────────────────────────────────────────┐
-        │  DOGGO — autonomous orchestrator ("what should I do?")│
+        │  BONE — autonomous orchestrator ("what should I do?")│
         │   • SOURCES / CREATES rows        ← the gap we found  │
         │   • creates & configures columns                      │
         │   • picks / tunes a Dogi per column                  │
@@ -107,16 +107,16 @@ test while Doggo is free to be ambitious.
 ```
 
 The bottom two layers are the **interaction surface**: one set of primitives that
-the GUI, Doggo, and MCP all use. That is what "Dogi is the layer between the
+the GUI, Bone, and MCP all use. That is what "Dogi is the layer between the
 MCP, the GUI, and the Fetch app" means in practice.
 
-## 5. How Doggo works
+## 5. How Bone works
 
 1. **Take a goal** (natural language) on a table — e.g. *"top 10 AI infra
    companies, their CEOs, and CEO LinkedIn URLs."*
 2. **Plan.** Decompose into steps. Some steps are **row-sourcing** (create the 10
    companies as rows), others are **columns** (CEO, LinkedIn) with a Dogi config.
-3. **Propose → approve (default).** Doggo shows the plan — *"I'll create ~10 rows
+3. **Propose → approve (default).** Bone shows the plan — *"I'll create ~10 rows
    from ‘top 10 AI infra companies’, add columns CEO and CEO LinkedIn, and run
    them."* You approve. **A toggle flips this to "just do it"** (autonomous, no
    approval) for users who trust it.
@@ -125,9 +125,9 @@ MCP, the GUI, and the Fetch app" means in practice.
 5. **Log.** Every action (rows created, columns added, cells filled, plan chosen)
    is written to `audit_log` and surfaced in an **Agent activity log** view.
 
-**Configurable settings.** Doggo exposes *its own* settings **and** the default
+**Configurable settings.** Bone exposes *its own* settings **and** the default
 **Dogi** config it hands to the columns it builds — provider/model (brain),
-web-search on/off, sources, policy, propose-vs-auto. So "configure Doggo" =
+web-search on/off, sources, policy, propose-vs-auto. So "configure Bone" =
 configure both the orchestrator and the cell agent it spawns.
 
 ## 6. How today's pieces map onto this
@@ -135,29 +135,29 @@ configure both the orchestrator and the cell agent it spawns.
 | Today | Becomes | Work needed |
 |---|---|---|
 | `packages/agent` cell run (`runDogi`) | **Dogi** | none — it *is* Dogi (rename later) |
-| `planner.ts` + `/ask-dogi` + `/apply-plan` (creates+chains columns "for every lead") | early **Doggo** | promote: add **row-sourcing**, add the propose/auto toggle, broaden "for every lead" to "operate the table" |
+| `planner.ts` + `/ask-dogi` + `/apply-plan` (creates+chains columns "for every lead") | early **Bone** | promote: add **row-sourcing**, add the propose/auto toggle, broaden "for every lead" to "operate the table" |
 | `audit_log` (already written on every action) | the **Agent log** data | surface it in a view |
-| per-table dedupe + dedupe-existing | a table op Doggo can call | already built |
+| per-table dedupe + dedupe-existing | a table op Bone can call | already built |
 
-We don't throw anything away — we **re-home the planner into Doggo** and give
+We don't throw anything away — we **re-home the planner into Bone** and give
 Dogi back its single job.
 
 ---
 
-## 7. Does Doggo need MCP to function? — **No.**
+## 7. Does Bone need MCP to function? — **No.**
 
-Short answer: **Doggo runs inside Fetch and calls the primitive layer directly,
+Short answer: **Bone runs inside Fetch and calls the primitive layer directly,
 in-process. It needs zero MCP.** MCP is an *optional projection* of the same
 primitives, useful two independent ways:
 
 1. **Fetch as an MCP _server_** — expose the primitive layer so an *external* AI
-   (Claude, etc.) can drive Fetch from outside. Doggo and an external MCP client
+   (Claude, etc.) can drive Fetch from outside. Bone and an external MCP client
    then become **two consumers of the same primitives** — siblings, not a stack.
-2. **Fetch as an MCP _client_** — let Doggo/Dogi *use* external MCP servers as
+2. **Fetch as an MCP _client_** — let Bone/Dogi *use* external MCP servers as
    extra tools (a CRM, a niche search server). Purely additive capability.
 
 **Design consequence:** build the **primitive/tool layer once** (table ops +
-Dogi cell-fill). Doggo calls it natively; MCP is a thin adapter that wraps the
+Dogi cell-fill). Bone calls it natively; MCP is a thin adapter that wraps the
 *same* layer. So MCP is "a door in and a door out," never the engine — and it
 comes almost for free once the primitives are clean. Full plan: [mcp.md](./mcp.md).
 
@@ -166,15 +166,15 @@ comes almost for free once the primitives are clean. Full plan: [mcp.md](./mcp.m
 ## 8. Decisions locked in this session (2026-06-06)
 
 - **Two agents, kept separate:** **Dogi** (cell primitive / interaction layer) +
-  **Doggo** (autonomous orchestrator). Doggo is a superset that uses Dogi.
-- **Row-sourcing is a Doggo capability** ("make a list of N X" creates rows, then
+  **Bone** (autonomous orchestrator). Bone is a superset that uses Dogi.
+- **Row-sourcing is a Bone capability** ("make a list of N X" creates rows, then
   Dogi fills the columns). This is the headline next feature.
-- **Doggo defaults to propose-a-plan** (like Ask-Dogi today) with a **toggle to
+- **Bone defaults to propose-a-plan** (like Ask-Dogi today) with a **toggle to
   "just do it"** (autonomous).
-- **Doggo's settings are configurable** — both its own and the default Dogi
+- **Bone's settings are configurable** — both its own and the default Dogi
   config it gives the columns it builds.
-- **Names:** Doggo / Dogi for now; revisit later. Code identifier `dogi` = Dogi.
-- **MCP is optional**, a projection of the shared primitive layer; Doggo does not
+- **Names:** Bone / Dogi for now; revisit later. Code identifier `dogi` = Dogi.
+- **MCP is optional**, a projection of the shared primitive layer; Bone does not
   depend on it.
 - **A new table starts with one blank row** (index shows `1`), so it's never a
   dead end. (See [leads-grid.md](./leads-grid.md).)
@@ -185,7 +185,7 @@ comes almost for free once the primitives are clean. Full plan: [mcp.md](./mcp.m
   hard cap, a target, or a hint? What about "all the YC W24 companies"?
 - **Dedup on sourced rows** — sourcing the same list twice should reuse, not
   duplicate (ties into per-table dedupe + dedupe-existing).
-- Where Doggo lives in the **nav/UX**: a mode on the table ("Ask Doggo"), or its
+- Where Bone lives in the **nav/UX**: a mode on the table ("Ask Bone"), or its
   own surface alongside the Agents page?
 - Cost/guardrails for autonomous "just do it" runs (row count × column count ×
   brain cost) — reuse the cost estimate + a ceiling/confirm.

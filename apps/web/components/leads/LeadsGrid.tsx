@@ -7,7 +7,7 @@ import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
 import { CellPeek } from './CellPeek';
 import { ImportModal } from './ImportModal';
-import { AskDoggoModal } from './AskDoggoModal';
+import { AskBoneModal } from './AskBoneModal';
 import { Modal } from '@/components/Modal';
 
 /**
@@ -752,7 +752,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           className="btn btn-accent btn-sm"
           onClick={() => { setDogiSuccessMsg(null); setShowAskDogi(true); }}
         >
-          Ask Doggo 🐕
+          Ask Bone 🐕
         </button>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowImport(true)}>
           Import CSV
@@ -1124,9 +1124,9 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
         </Modal>
       )}
 
-      {/* Ask Doggo modal */}
+      {/* Ask Bone modal */}
       {showAskDogi && (
-        <AskDoggoModal
+        <AskBoneModal
           tableId={tableId}
           onClose={() => setShowAskDogi(false)}
           onDone={({ rowsCreated, columnsCreated, enqueued }) => {
@@ -1139,7 +1139,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
             if (columnsCreated > 0) parts.push(`${columnsCreated} column${columnsCreated !== 1 ? 's' : ''}`);
             if (enqueued > 0) parts.push(`${enqueued} run${enqueued !== 1 ? 's' : ''} queued`);
             setDogiSuccessMsg(
-              parts.length > 0 ? `Doggo created ${parts.join(', ')}` : 'Doggo finished',
+              parts.length > 0 ? `Bone created ${parts.join(', ')}` : 'Bone finished',
             );
             // Auto-dismiss after 5 s
             setTimeout(() => setDogiSuccessMsg(null), 5000);

@@ -9,7 +9,7 @@
  *
  * Honors devx/mcp.md §3: async-native (run_* return job ids — poll get_job),
  * provenance in row/lead responses (`enrichmentConf` is returned verbatim),
- * human-in-the-loop (`ask_doggo` returns a plan; `run_doggo` is the explicit
+ * human-in-the-loop (`ask_bone` returns a plan; `run_bone` is the explicit
  * commit), pagination on query_rows, least privilege (read-only default).
  */
 
@@ -281,21 +281,21 @@ function writeTools(client: FetchClient): ToolDef[] {
       },
     },
     {
-      name: 'ask_doggo',
+      name: 'ask_bone',
       description:
-        'Ask Doggo for a PLAN to achieve a goal on a table (row-sourcing + columns). Returns a plan to review — it does NOT execute. Call run_doggo with an approved plan to commit.',
+        'Ask Bone for a PLAN to achieve a goal on a table (row-sourcing + columns). Returns a plan to review — it does NOT execute. Call run_bone with an approved plan to commit.',
       inputSchema: z.object({
         tableId: z.string().min(1),
         goal: z.string().min(1),
       }),
       write: true,
       handler: (a) =>
-        client.post(`/tables/${enc(a.tableId)}/doggo/plan`, { goal: a.goal }),
+        client.post(`/tables/${enc(a.tableId)}/bone/plan`, { goal: a.goal }),
     },
     {
-      name: 'run_doggo',
+      name: 'run_bone',
       description:
-        'Execute an APPROVED Doggo plan (the explicit human-in-the-loop commit). Pass the plan returned by ask_doggo (optionally edited). Sources rows, creates columns, and enqueues runs. Returns { rowsCreated, columnsCreated, enqueued } — poll get_job for the runs.',
+        'Execute an APPROVED Bone plan (the explicit human-in-the-loop commit). Pass the plan returned by ask_bone (optionally edited). Sources rows, creates columns, and enqueues runs. Returns { rowsCreated, columnsCreated, enqueued } — poll get_job for the runs.',
       inputSchema: z.object({
         tableId: z.string().min(1),
         plan: z.object({
@@ -305,7 +305,7 @@ function writeTools(client: FetchClient): ToolDef[] {
       }),
       write: true,
       handler: (a) =>
-        client.post(`/tables/${enc(a.tableId)}/doggo/run`, { plan: a.plan }),
+        client.post(`/tables/${enc(a.tableId)}/bone/run`, { plan: a.plan }),
     },
     {
       name: 'estimate_cost',

@@ -28,8 +28,8 @@ const WRITE_TOOLS = [
   'run_column',
   'run_cell',
   'dedupe',
-  'ask_doggo',
-  'run_doggo',
+  'ask_bone',
+  'run_bone',
   'estimate_cost',
 ];
 

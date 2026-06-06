@@ -278,5 +278,5 @@ the *anchor* (4) were the real blockers. Both are fixed; (3) is mitigated by thi
 stack; (4)'s data-model rework is the next build.
 
 Related: [dogi-agent.md](./dogi-agent.md) (the research loop + sources),
-[providers-and-keys.md](./providers-and-keys.md), [doggo.md](./doggo.md),
+[providers-and-keys.md](./providers-and-keys.md), [bone.md](./bone.md),
 [RUN-search-stack.md](./RUN-search-stack.md) (how to run the services).

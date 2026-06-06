@@ -5,19 +5,19 @@ import { truncateAll } from '@fetch/db/testing';
 import { seedBlankLead, startQueues, stopQueues } from '@fetch/core';
 
 /**
- * Phase I — Doggo (autonomous orchestrator + row-sourcing). We mock the planner
- * (`planDoggo`) and the row-sourcing primitive (`sourceRows`) so NO network is
+ * Phase I — Bone (autonomous orchestrator + row-sourcing). We mock the planner
+ * (`planBone`) and the row-sourcing primitive (`sourceRows`) so NO network is
  * touched. The endpoints' real work — inserting sourced rows as deduped leads,
  * creating columns (reusing apply-plan), and enqueuing the root columns — runs
  * against the test DB.
  */
 
-const { planDoggo, sourceRows, getLLM } = vi.hoisted(() => ({
-  planDoggo: vi.fn(),
+const { planBone, sourceRows, getLLM } = vi.hoisted(() => ({
+  planBone: vi.fn(),
   sourceRows: vi.fn(),
   getLLM: vi.fn(),
 }));
-vi.mock('@fetch/agent', async (orig) => ({ ...(await orig<any>()), planDoggo, sourceRows }));
+vi.mock('@fetch/agent', async (orig) => ({ ...(await orig<any>()), planBone, sourceRows }));
 vi.mock('@fetch/llm', async (orig) => ({ ...(await orig<any>()), getLLM }));
 
 const { app } = await import('../src/app');
@@ -53,7 +53,7 @@ beforeAll(startQueues);
 afterAll(stopQueues);
 beforeEach(async () => {
   await truncateAll();
-  planDoggo.mockReset();
+  planBone.mockReset();
   sourceRows.mockReset();
   getLLM.mockReset();
 });
@@ -66,12 +66,12 @@ async function post(path: string, body: unknown) {
   });
 }
 
-describe('POST /tables/:id/doggo/plan', () => {
+describe('POST /tables/:id/bone/plan', () => {
   it('returns a plan without mutating', async () => {
     getLLM.mockReturnValue({ chat: vi.fn() });
-    planDoggo.mockResolvedValue(plan);
+    planBone.mockResolvedValue(plan);
 
-    const res = await post(`/tables/${T}/doggo/plan`, { goal: plan.goal });
+    const res = await post(`/tables/${T}/bone/plan`, { goal: plan.goal });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.plan.steps).toHaveLength(2);
@@ -83,24 +83,24 @@ describe('POST /tables/:id/doggo/plan', () => {
 
   it('404s for an unknown table', async () => {
     getLLM.mockReturnValue({ chat: vi.fn() });
-    const res = await post(`/tables/nope/doggo/plan`, { goal: 'x' });
+    const res = await post(`/tables/nope/bone/plan`, { goal: 'x' });
     expect(res.status).toBe(404);
   });
 
   it('400s on a missing goal', async () => {
-    const res = await post(`/tables/${T}/doggo/plan`, {});
+    const res = await post(`/tables/${T}/bone/plan`, {});
     expect(res.status).toBe(400);
   });
 });
 
-describe('POST /tables/:id/doggo/run', () => {
+describe('POST /tables/:id/bone/run', () => {
   it('creates the sourced rows, the columns, and enqueues the root column', async () => {
     sourceRows.mockResolvedValue({
       rows: [{ company: 'Tesla' }, { company: 'BYD' }, { company: 'Rivian' }],
       provider: 'openai:test',
     });
 
-    const res = await post(`/tables/${T}/doggo/run`, { plan });
+    const res = await post(`/tables/${T}/bone/run`, { plan });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.rowsCreated).toBe(3);
@@ -130,7 +130,7 @@ describe('POST /tables/:id/doggo/run', () => {
       provider: 'openai:test',
     });
 
-    await post(`/tables/${T}/doggo/run`, { plan });
+    await post(`/tables/${T}/bone/run`, { plan });
 
     const cols = await db.query.columns.findMany({ where: eq(columns.tableId, T) });
     const company = cols.find((cc) => cc.key === 'company');
@@ -158,7 +158,7 @@ describe('POST /tables/:id/doggo/run', () => {
       provider: 'openai:test',
     });
 
-    const res = await post(`/tables/${T}/doggo/run`, { plan });
+    const res = await post(`/tables/${T}/bone/run`, { plan });
     expect((await res.json()).rowsCreated).toBe(3);
 
     const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
@@ -181,25 +181,25 @@ describe('POST /tables/:id/doggo/run', () => {
       provider: 'openai:test',
     });
 
-    const first = await post(`/tables/${T}/doggo/run`, { plan });
+    const first = await post(`/tables/${T}/bone/run`, { plan });
     expect((await first.json()).rowsCreated).toBe(3);
 
     // Second run sources the same three — dedupe should merge, not duplicate.
-    const second = await post(`/tables/${T}/doggo/run`, { plan });
+    const second = await post(`/tables/${T}/bone/run`, { plan });
     expect((await second.json()).rowsCreated).toBe(0);
 
     const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
     expect(rows).toHaveLength(3);
   });
 
-  it('honors table.settings.doggo.brain on the columns it builds', async () => {
+  it('honors table.settings.bone.brain on the columns it builds', async () => {
     await db
       .update(tables)
-      .set({ settings: { doggo: { brain: { provider: 'openai', model: 'gpt-4.1' } } } })
+      .set({ settings: { bone: { brain: { provider: 'openai', model: 'gpt-4.1' } } } })
       .where(eq(tables.id, T));
 
     sourceRows.mockResolvedValue({ rows: [{ company: 'Tesla' }], provider: 'openai:test' });
-    await post(`/tables/${T}/doggo/run`, { plan });
+    await post(`/tables/${T}/bone/run`, { plan });
 
     const cols = await db.query.columns.findMany({ where: eq(columns.tableId, T) });
     const ceo = cols.find((cc) => cc.key === 'ceo')!;
@@ -207,12 +207,12 @@ describe('POST /tables/:id/doggo/run', () => {
   });
 
   it('400s on an empty plan', async () => {
-    const res = await post(`/tables/${T}/doggo/run`, { plan: { steps: [] } });
+    const res = await post(`/tables/${T}/bone/run`, { plan: { steps: [] } });
     expect(res.status).toBe(400);
   });
 
   it('404s for an unknown table', async () => {
-    const res = await post(`/tables/nope/doggo/run`, { plan });
+    const res = await post(`/tables/nope/bone/run`, { plan });
     expect(res.status).toBe(404);
   });
 });

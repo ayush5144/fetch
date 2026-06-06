@@ -13,12 +13,12 @@ import {
 import { getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
 import {
   isSourceRowsStep,
-  planDoggo,
+  planBone,
   planGoal,
   sourceRows,
   type DogiBrain,
   type DogiPlanStep,
-  type DoggoPlanStep,
+  type BonePlanStep,
   type SourceRowsStep,
 } from '@fetch/agent';
 import { getLLM } from '@fetch/llm';
@@ -414,7 +414,7 @@ tablesRoutes.post('/:id/run', async (c) => {
   return c.json({ enqueued, formula }, 202);
 });
 
-// ── Plan execution helpers (shared by apply-plan and doggo/run) ───────────────
+// ── Plan execution helpers (shared by apply-plan and bone/run) ───────────────
 
 type ColumnRow = typeof columnsTable.$inferSelect;
 
@@ -423,7 +423,7 @@ type ColumnRow = typeof columnsTable.$inferSelect;
  * as apply-plan does. Reuses the caller's `byKey` map of already-present columns
  * so re-applying reuses instead of duplicating. Collects the keys of root steps
  * (`dependsOn` empty) so the caller can enqueue them. `brain` (when given) is
- * folded into each created column's config so Doggo's default brain drives runs.
+ * folded into each created column's config so Bone's default brain drives runs.
  */
 async function createPlanColumns(
   tableId: string,
@@ -455,8 +455,8 @@ async function createPlanColumns(
       policy: step.policy,
       dependsOn: step.dependsOn,
     };
-    // Doggo hands its default brain to the columns it builds (unless the step
-    // already carries one). Lets a table's settings.doggo.brain drive runs.
+    // Bone hands its default brain to the columns it builds (unless the step
+    // already carries one). Lets a table's settings.bone.brain drive runs.
     if (brain) config.brain = brain;
 
     try {
@@ -598,9 +598,9 @@ tablesRoutes.post('/:id/apply-plan', async (c) => {
   return c.json({ columns: created, enqueued }, 201);
 });
 
-// ── Doggo (Phase I): autonomous orchestrator with row-sourcing ────────────────
+// ── Bone (Phase I): autonomous orchestrator with row-sourcing ────────────────
 
-const doggoPlanSchema = z.object({
+const bonePlanSchema = z.object({
   goal: z.string().min(1),
   /** Optional BYOK key for the planning call; never persisted or logged. */
   apiKey: z.string().optional(),
@@ -620,40 +620,40 @@ const columnPlanStepSchema = planStepSchema.extend({
   kind: z.literal('column').default('column'),
 });
 
-/** A Doggo plan step is EITHER a source-rows step or a column step. */
-const doggoStepSchema = z.union([sourceRowsStepSchema, columnPlanStepSchema]);
+/** A Bone plan step is EITHER a source-rows step or a column step. */
+const boneStepSchema = z.union([sourceRowsStepSchema, columnPlanStepSchema]);
 
-const doggoRunSchema = z.object({
+const boneRunSchema = z.object({
   plan: z.object({
     goal: z.string().optional(),
-    steps: z.array(doggoStepSchema).min(1),
+    steps: z.array(boneStepSchema).min(1),
   }),
   /** Optional BYOK key threaded to created columns' runs; never persisted. */
   apiKey: z.string().optional(),
 });
 
 /**
- * Ask DOGGO a GOAL → a structured PLAN of ordered steps (row-sourcing +
+ * Ask BONE a GOAL → a structured PLAN of ordered steps (row-sourcing +
  * columns), never prose. NO MUTATION — this only proposes; the human approves
- * before `/doggo/run` executes. Reuses the planner with table context (existing
+ * before `/bone/run` executes. Reuses the planner with table context (existing
  * columns + current row count, so an empty table favors a leading source-rows
  * step). Returns `{ plan: null, reason }` when no LLM is configured. 404 unknown
  * table, 400 missing goal.
  */
-tablesRoutes.post('/:id/doggo/plan', async (c) => {
+tablesRoutes.post('/:id/bone/plan', async (c) => {
   const tableId = c.req.param('id');
   const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
   if (!table) return c.json({ error: 'not found' }, 404);
 
-  let body: z.infer<typeof doggoPlanSchema>;
+  let body: z.infer<typeof bonePlanSchema>;
   try {
-    body = doggoPlanSchema.parse(await c.req.json());
+    body = bonePlanSchema.parse(await c.req.json());
   } catch {
     return c.json({ error: 'a non-empty `goal` is required' }, 400);
   }
 
-  const doggoSettings = (table.settings as { doggo?: { brain?: DogiBrain } } | null)?.doggo;
-  if (!getLLM(body.apiKey ? { apiKey: body.apiKey } : doggoSettings?.brain ?? {})) {
+  const boneSettings = (table.settings as { bone?: { brain?: DogiBrain } } | null)?.bone;
+  if (!getLLM(body.apiKey ? { apiKey: body.apiKey } : boneSettings?.brain ?? {})) {
     return c.json({ plan: null, reason: 'no LLM configured' });
   }
 
@@ -663,10 +663,10 @@ tablesRoutes.post('/:id/doggo/plan', async (c) => {
     .from(leads)
     .where(eq(leads.tableId, tableId));
 
-  const plan = await planDoggo(body.goal, {
+  const plan = await planBone(body.goal, {
     existingColumns: existing.map((col) => col.key),
     rowCount: rowCountRow?.n ?? 0,
-    brain: doggoSettings?.brain,
+    brain: boneSettings?.brain,
     apiKey: body.apiKey,
   });
   if (!plan) return c.json({ plan: null, reason: 'no LLM configured' });
@@ -674,38 +674,38 @@ tablesRoutes.post('/:id/doggo/plan', async (c) => {
 });
 
 /**
- * Run an (approved) Doggo plan. Order of operations (devx/doggo.md §5):
+ * Run an (approved) Bone plan. Order of operations (devx/bone.md §5):
  *  1. SOURCE ROWS — for each source-rows step, generate entities (`sourceRows`)
  *     and insert them as leads (`insertSourcedRows`, which reuses `ingestLead` so
  *     the table's dedupe policy applies — re-running won't duplicate).
  *  2. CREATE COLUMNS — create one `dogi` column per column step, REUSING the
- *     exact apply-plan logic (idempotent by key, audited). Doggo's default brain
- *     (from `settings.doggo`) is handed to the columns it builds.
+ *     exact apply-plan logic (idempotent by key, audited). Bone's default brain
+ *     (from `settings.bone`) is handed to the columns it builds.
  *  3. ENQUEUE — kick off the ROOT columns across ALL the table's leads (incl. the
  *     newly sourced ones), run-only-if-empty; dependents chain in the worker.
  *
  * Returns `{ rowsCreated, columnsCreated, enqueued }`. 404 unknown table, 400 on
  * an empty/invalid plan.
  */
-tablesRoutes.post('/:id/doggo/run', async (c) => {
+tablesRoutes.post('/:id/bone/run', async (c) => {
   const tableId = c.req.param('id');
   const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
   if (!table) return c.json({ error: 'not found' }, 404);
 
-  let body: z.infer<typeof doggoRunSchema>;
+  let body: z.infer<typeof boneRunSchema>;
   try {
-    body = doggoRunSchema.parse(await c.req.json());
+    body = boneRunSchema.parse(await c.req.json());
   } catch {
     return c.json({ error: 'a non-empty `plan.steps` array is required' }, 400);
   }
 
-  // Doggo settings (light): table.settings.doggo overrides the brain / default
+  // Bone settings (light): table.settings.bone overrides the brain / default
   // Dogi config it gives created columns; else the env default provider/model.
-  const doggoSettings =
-    (table.settings as { doggo?: { brain?: DogiBrain } } | null)?.doggo ?? undefined;
-  const brain = doggoSettings?.brain;
+  const boneSettings =
+    (table.settings as { bone?: { brain?: DogiBrain } } | null)?.bone ?? undefined;
+  const brain = boneSettings?.brain;
 
-  const steps = body.plan.steps as DoggoPlanStep[];
+  const steps = body.plan.steps as BonePlanStep[];
   const sourceSteps = steps.filter((s): s is SourceRowsStep => isSourceRowsStep(s));
   const columnSteps = steps.filter((s) => !isSourceRowsStep(s)) as DogiPlanStep[];
 
@@ -751,7 +751,7 @@ tablesRoutes.post('/:id/doggo/run', async (c) => {
           entity: 'column',
           entityId: col!.id,
           action: 'create',
-          actor: 'doggo',
+          actor: 'bone',
           diff: { key: step.primaryField, sourcedPrimary: true },
         });
       } catch {
@@ -761,12 +761,12 @@ tablesRoutes.post('/:id/doggo/run', async (c) => {
 
     const [source] = await db
       .insert(sources)
-      .values({ type: 'manual', raw: { doggo: step.description, count: step.count } })
+      .values({ type: 'manual', raw: { bone: step.description, count: step.count } })
       .returning();
     const { created } = await insertSourcedRows(rows, {
       tableId,
       sourceId: source!.id,
-      actor: 'doggo',
+      actor: 'bone',
     });
     rowsCreated += created;
   }
@@ -783,8 +783,8 @@ tablesRoutes.post('/:id/doggo/run', async (c) => {
     entity: 'table',
     entityId: tableId,
     action: 'update',
-    actor: 'doggo',
-    diff: { doggo: { goal: body.plan.goal ?? null, rowsCreated, columnsCreated, enqueued } },
+    actor: 'bone',
+    diff: { bone: { goal: body.plan.goal ?? null, rowsCreated, columnsCreated, enqueued } },
   });
 
   return c.json({ rowsCreated, columnsCreated, enqueued });

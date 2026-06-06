@@ -90,8 +90,8 @@ column stores numbers). The set is extensible — more value types later.
 - **Row number** column on the left (the **index**; the checkbox + index columns
   are structural, always present — no preset *content* columns).
 - **A new table starts with one blank row** showing `1` in the index — so a fresh
-  table is never a dead end ("no rows yet"). The user types into it, or **Doggo**
-  fills/creates rows (see [doggo.md](./doggo.md)).
+  table is never a dead end ("no rows yet"). The user types into it, or **Bone**
+  fills/creates rows (see [bone.md](./bone.md)).
 - **Drag to reorder rows** (persisted order).
 - **`+ new lead`** at the bottom adds a blank row inline; fill cells directly.
 

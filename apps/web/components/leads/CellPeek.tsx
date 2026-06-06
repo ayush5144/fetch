@@ -57,7 +57,7 @@ export function CellPeek({ lead, column, onRerun, onClose }: Props) {
           </div>
 
           {failed && (
-            <div className="doggo-banner doggo-banner-amber">
+            <div className="bone-banner bone-banner-amber">
               <strong>⚠ This cell ran but didn’t find a value.</strong>
               {conf?.error && (
                 <div style={{ marginTop: 4, color: 'var(--ink-soft)' }}>{conf.error}</div>

@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * AskDoggoModal — Doggo goal mode UI (the autonomous orchestrator).
+ * AskBoneModal — Bone goal mode UI (the autonomous orchestrator).
  *
- * Doggo is a superset of the old "Ask Dogi" goal planner: a plan can SOURCE
- * ROWS (create entities) and/or build COLUMNS (enrich rows). See devx/doggo.md.
+ * Bone is a superset of the old "Ask Dogi" goal planner: a plan can SOURCE
+ * ROWS (create entities) and/or build COLUMNS (enrich rows). See devx/bone.md.
  *
  * Flow:
- *   1. User types a free-text goal and submits → POST /tables/:id/doggo/plan
+ *   1. User types a free-text goal and submits → POST /tables/:id/bone/plan
  *   2. If plan is null, show the friendly reason.
  *   3. Show the plan review: ordered step cards.
  *      - A source-rows step renders as "Create ~{count} {primaryLabel}" with an
@@ -15,26 +15,26 @@
  *      - A column step renders exactly as today (label, instruction, sources,
  *        editable output key, remove).
  *      With "Just do it" ON, planning runs immediately without the review pause.
- *   4. "Approve & build" → POST /tables/:id/doggo/run { plan: { goal, steps } }
+ *   4. "Approve & build" → POST /tables/:id/bone/run { plan: { goal, steps } }
  *      → shows the result line and calls onDone so the grid refreshes.
  *
- * Doggo settings (collapsible): pick the brain provider/model and the default
- * sources for columns Doggo creates. These persist to table.settings.doggo and
+ * Bone settings (collapsible): pick the brain provider/model and the default
+ * sources for columns Bone creates. These persist to table.settings.bone and
  * are included on the run call.
  */
 
 import { useEffect, useState } from 'react';
 import { Modal } from '@/components/Modal';
 import {
-  doggoApi,
-  doggoSettingsApi,
+  boneApi,
+  boneSettingsApi,
   settingsApi,
   isSourceRowsStep,
-  type DoggoPlan,
-  type DoggoPlanStep,
+  type BonePlan,
+  type BonePlanStep,
   type ColumnPlanStep,
   type SourceRowsStep,
-  type DoggoSettings,
+  type BoneSettings,
   type DogiSource,
   type LLMProvider,
 } from '@/lib/api';
@@ -80,18 +80,18 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
+export function AskBoneModal({ tableId, onClose, onDone }: Props) {
   // ── Phase 1: goal input
   const [goal, setGoal] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ── Phase 2: plan review
-  const [plan, setPlan] = useState<DoggoPlan | null>(null);
+  const [plan, setPlan] = useState<BonePlan | null>(null);
   const [noLlmReason, setNoLlmReason] = useState<string | null>(null);
 
   // ── Editable steps (local copy so the user can tweak before running)
-  const [steps, setSteps] = useState<DoggoPlanStep[]>([]);
+  const [steps, setSteps] = useState<BonePlanStep[]>([]);
 
   // ── Phase 3: running
   const [running, setRunning] = useState(false);
@@ -104,19 +104,19 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
   // ── "Just do it": skip the review pause and run immediately after planning.
   const [justDoIt, setJustDoIt] = useState(false);
 
-  // ── Doggo settings (collapsible, persisted to table.settings.doggo)
+  // ── Bone settings (collapsible, persisted to table.settings.bone)
   const [showSettings, setShowSettings] = useState(false);
-  const [doggoSettings, setDoggoSettings] = useState<DoggoSettings>({});
+  const [boneSettings, setBoneSettings] = useState<BoneSettings>({});
   const [defaultModel, setDefaultModel] = useState<{ provider: string; model: string } | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Load current Doggo settings + the server's default model when the modal opens.
+  // Load current Bone settings + the server's default model when the modal opens.
   useEffect(() => {
     let alive = true;
-    Promise.all([doggoSettingsApi.get(tableId), settingsApi.get()])
+    Promise.all([boneSettingsApi.get(tableId), settingsApi.get()])
       .then(([ds, srv]) => {
         if (!alive) return;
-        setDoggoSettings(ds);
+        setBoneSettings(ds);
         setDefaultModel(srv.llm);
       })
       .catch(() => {/* settings are best-effort; the run still works on env defaults */});
@@ -133,9 +133,9 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     setRunError(null);
     setPlan(null);
     try {
-      const res = await doggoApi.plan(tableId, goal.trim());
+      const res = await boneApi.plan(tableId, goal.trim());
       if (!res.plan) {
-        setNoLlmReason(res.reason ?? 'No LLM is configured. Add an LLM key in your environment to use Doggo.');
+        setNoLlmReason(res.reason ?? 'No LLM is configured. Add an LLM key in your environment to use Bone.');
         return;
       }
       const freshSteps = res.plan.steps.map(cloneStep);
@@ -150,7 +150,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     }
   }
 
-  function cloneStep(s: DoggoPlanStep): DoggoPlanStep {
+  function cloneStep(s: BonePlanStep): BonePlanStep {
     if (isSourceRowsStep(s)) return { ...s };
     return { ...s, output: { ...s.output } };
   }
@@ -177,12 +177,12 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     setSteps((prev) => prev.filter((s) => isSourceRowsStep(s) || s.id !== stepId));
   }
 
-  async function runPlan(p: DoggoPlan, stepsToRun: DoggoPlanStep[]) {
+  async function runPlan(p: BonePlan, stepsToRun: BonePlanStep[]) {
     if (stepsToRun.length === 0) return;
     setRunning(true);
     setRunError(null);
     try {
-      const res = await doggoApi.run(tableId, { goal: p.goal, steps: stepsToRun });
+      const res = await boneApi.run(tableId, { goal: p.goal, steps: stepsToRun });
       // Refresh the grid in the background, then show the summary so the user
       // sees what was created and that enrichment is now running.
       setResult(res);
@@ -198,13 +198,13 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     if (plan) void runPlan(plan, steps);
   }
 
-  // ── Settings change → persist to table.settings.doggo (round-trips). ────────
+  // ── Settings change → persist to table.settings.bone (round-trips). ────────
 
-  async function persistSettings(next: DoggoSettings) {
-    setDoggoSettings(next);
+  async function persistSettings(next: BoneSettings) {
+    setBoneSettings(next);
     setSavingSettings(true);
     try {
-      await doggoSettingsApi.save(tableId, next);
+      await boneSettingsApi.save(tableId, next);
     } catch {
       /* non-fatal; the run still works on env defaults */
     } finally {
@@ -213,33 +213,33 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
   }
 
   function setBrainProvider(provider: LLMProvider) {
-    const next: DoggoSettings = {
-      ...doggoSettings,
+    const next: BoneSettings = {
+      ...boneSettings,
       brain: {
         provider,
         model: PROVIDER_DEFAULT_MODELS[provider],
-        keySource: doggoSettings.brain?.keySource ?? 'env',
+        keySource: boneSettings.brain?.keySource ?? 'env',
       },
     };
     void persistSettings(next);
   }
 
   function setBrainModel(model: string) {
-    const provider = doggoSettings.brain?.provider ?? (defaultModel?.provider as LLMProvider) ?? 'openai';
-    const next: DoggoSettings = {
-      ...doggoSettings,
-      brain: { provider, model, keySource: doggoSettings.brain?.keySource ?? 'env' },
+    const provider = boneSettings.brain?.provider ?? (defaultModel?.provider as LLMProvider) ?? 'openai';
+    const next: BoneSettings = {
+      ...boneSettings,
+      brain: { provider, model, keySource: boneSettings.brain?.keySource ?? 'env' },
     };
     void persistSettings(next);
   }
 
-  const defaultSources = doggoSettings.defaultSources ?? [{ type: 'llm' } as DogiSource];
+  const defaultSources = boneSettings.defaultSources ?? [{ type: 'llm' } as DogiSource];
   const webSearchOn = defaultSources.some((s) => s.type === 'web');
 
   function toggleWebSearch(on: boolean) {
     const withoutWeb = defaultSources.filter((s) => s.type !== 'web');
-    const next: DoggoSettings = {
-      ...doggoSettings,
+    const next: BoneSettings = {
+      ...boneSettings,
       defaultSources: on
         ? [{ type: 'web', via: 'native' }, ...withoutWeb]
         : withoutWeb.length > 0 ? withoutWeb : [{ type: 'llm' }],
@@ -247,10 +247,10 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     void persistSettings(next);
   }
 
-  const brainProvider = (doggoSettings.brain?.provider as LLMProvider | undefined)
+  const brainProvider = (boneSettings.brain?.provider as LLMProvider | undefined)
     ?? (defaultModel?.provider as LLMProvider | undefined)
     ?? 'openai';
-  const brainModel = doggoSettings.brain?.model ?? defaultModel?.model ?? '';
+  const brainModel = boneSettings.brain?.model ?? defaultModel?.model ?? '';
 
   // ── Render: result summary phase ───────────────────────────────────────────
   // After a successful run, show a calm on-brand summary instead of just
@@ -263,7 +263,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     const created = parts.length > 0 ? `Created ${parts.join(', ')}.` : 'Nothing new to create.';
     return (
       <Modal
-        title="Doggo is on it 🐕"
+        title="Bone is on it 🐕"
         onClose={onClose}
         maxWidth={520}
         footer={
@@ -274,7 +274,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
           </div>
         }
       >
-        <div className="doggo-banner doggo-banner-green" style={{ lineHeight: 1.6 }}>
+        <div className="bone-banner bone-banner-green" style={{ lineHeight: 1.6 }}>
           <strong>{created}</strong>
           {result.enqueued > 0 && (
             <div style={{ marginTop: 6, color: 'var(--ink-soft)' }}>
@@ -292,12 +292,12 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
   if (!plan) {
     return (
       <Modal
-        title="Ask Doggo 🐕"
+        title="Ask Bone 🐕"
         onClose={onClose}
         maxWidth={520}
         footer={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%' }}>
-            <label className="doggo-toggle" title="Run the plan immediately instead of pausing to review it.">
+            <label className="bone-toggle" title="Run the plan immediately instead of pausing to review it.">
               <input
                 type="checkbox"
                 checked={justDoIt}
@@ -314,7 +314,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
                 disabled={!goal.trim() || loading || running}
                 onClick={handlePlan}
               >
-                {running ? 'Working…' : loading ? 'Planning…' : justDoIt ? 'Plan & run' : 'Ask Doggo'}
+                {running ? 'Working…' : loading ? 'Planning…' : justDoIt ? 'Plan & run' : 'Ask Bone'}
               </button>
             </div>
           </div>
@@ -322,7 +322,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p style={{ margin: 0, color: 'var(--ink-soft)', fontSize: 13, lineHeight: 1.6 }}>
-            Describe what you want. Doggo can <strong>create rows</strong> (e.g. "top 10 EV companies") and
+            Describe what you want. Bone can <strong>create rows</strong> (e.g. "top 10 EV companies") and
             <strong> build columns</strong> to enrich them — then fill everything in order.
           </p>
           <div className="field" style={{ marginBottom: 0 }}>
@@ -347,7 +347,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
             <strong>Just do it</strong> runs the plan as soon as it's ready — leave it off to review first.
           </p>
 
-          <DoggoSettingsSection
+          <BoneSettingsSection
             open={showSettings}
             onToggle={() => setShowSettings((v) => !v)}
             brainProvider={brainProvider}
@@ -361,14 +361,14 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
           />
 
           {noLlmReason && (
-            <div className="doggo-banner doggo-banner-amber">
+            <div className="bone-banner bone-banner-amber">
               <strong>No LLM configured</strong>
               <div style={{ marginTop: 4, color: 'var(--ink-soft)' }}>{noLlmReason}</div>
             </div>
           )}
 
-          {error && <div className="doggo-banner doggo-banner-red">{error}</div>}
-          {runError && <div className="doggo-banner doggo-banner-red">{runError}</div>}
+          {error && <div className="bone-banner bone-banner-red">{error}</div>}
+          {runError && <div className="bone-banner bone-banner-red">{runError}</div>}
         </div>
       </Modal>
     );
@@ -388,7 +388,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
 
   return (
     <Modal
-      title="Review Doggo's plan 🐕"
+      title="Review Bone's plan 🐕"
       onClose={onClose}
       maxWidth={600}
       footer={
@@ -431,7 +431,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
         </div>
 
         <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
-          Doggo will run these steps in order — create rows first, then build and fill columns.
+          Bone will run these steps in order — create rows first, then build and fill columns.
           Adjust counts or output names below before approving.
         </p>
 
@@ -464,7 +464,7 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
           </div>
         )}
 
-        {runError && <div className="doggo-banner doggo-banner-red">{runError}</div>}
+        {runError && <div className="bone-banner bone-banner-red">{runError}</div>}
       </div>
     </Modal>
   );
@@ -482,7 +482,7 @@ function SourceRowsCard({
   onCountChange: (n: number) => void;
 }) {
   return (
-    <div className="doggo-step doggo-step-source">
+    <div className="bone-step bone-step-source">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <StepNumber n={index + 1} />
         <span className="pill pill-accent" style={{ fontSize: 11, padding: '2px 8px' }}>
@@ -520,7 +520,7 @@ function SourceRowsCard({
 interface ColumnCardProps {
   step: ColumnPlanStep;
   index: number;
-  allSteps: DoggoPlanStep[];
+  allSteps: BonePlanStep[];
   onRenameKey: (newKey: string) => void;
   onRemove: () => void;
 }
@@ -550,7 +550,7 @@ function ColumnStepCard({ step, index, allSteps, onRenameKey, onRemove }: Column
     .filter(Boolean);
 
   return (
-    <div className="doggo-step">
+    <div className="bone-step">
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -687,9 +687,9 @@ function ColumnStepCard({ step, index, allSteps, onRenameKey, onRemove }: Column
   );
 }
 
-// ── DoggoSettingsSection ──────────────────────────────────────────────────────
+// ── BoneSettingsSection ──────────────────────────────────────────────────────
 
-function DoggoSettingsSection({
+function BoneSettingsSection({
   open,
   onToggle,
   brainProvider,
@@ -713,18 +713,18 @@ function DoggoSettingsSection({
   onWebSearch: (on: boolean) => void;
 }) {
   return (
-    <div className="doggo-settings">
-      <button type="button" className="doggo-settings-head" onClick={onToggle}>
+    <div className="bone-settings">
+      <button type="button" className="bone-settings-head" onClick={onToggle}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ color: 'var(--muted)', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
-          Doggo settings
+          Bone settings
         </span>
         {saving && <span className="muted" style={{ fontSize: 11 }}>Saving…</span>}
       </button>
       {open && (
-        <div className="doggo-settings-body">
+        <div className="bone-settings-body">
           <p style={{ margin: 0, color: 'var(--muted)', fontSize: 12, lineHeight: 1.5 }}>
-            The <strong>brain</strong> Doggo plans with and the <strong>default sources</strong> it gives
+            The <strong>brain</strong> Bone plans with and the <strong>default sources</strong> it gives
             the columns it builds. Saved on this table.
           </p>
 
@@ -754,13 +754,13 @@ function DoggoSettingsSection({
             />
           </div>
 
-          <label className="doggo-toggle">
+          <label className="bone-toggle">
             <input
               type="checkbox"
               checked={webSearchOn}
               onChange={(e) => onWebSearch(e.target.checked)}
             />
-            <span>Web search for the columns Doggo creates (LLM is always on)</span>
+            <span>Web search for the columns Bone creates (LLM is always on)</span>
           </label>
         </div>
       )}

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const { getLLM } = vi.hoisted(() => ({ getLLM: vi.fn() }));
 vi.mock('@fetch/llm', () => ({ getLLM }));
 
-import { planDoggo, planGoal, isSourceRowsStep, type SourceRowsStep, type ColumnStep } from '../src/planner';
+import { planBone, planGoal, isSourceRowsStep, type SourceRowsStep, type ColumnStep } from '../src/planner';
 
 /**
  * Phase D — the goal-mode planner. Pure unit tests with a mocked LLM: proves a
@@ -98,7 +98,7 @@ describe('planGoal', () => {
   });
 });
 
-describe('planDoggo (row-sourcing)', () => {
+describe('planBone (row-sourcing)', () => {
   it('emits a leading source-rows step then column steps with correct deps (top N, empty table)', async () => {
     getLLM.mockReturnValue(
       fakeLLM({
@@ -136,7 +136,7 @@ describe('planDoggo (row-sourcing)', () => {
       }),
     );
 
-    const plan = await planDoggo('list the top 10 EV companies and their CEOs and CEO LinkedIn', {
+    const plan = await planBone('list the top 10 EV companies and their CEOs and CEO LinkedIn', {
       rowCount: 0,
     });
     expect(plan).not.toBeNull();
@@ -166,7 +166,7 @@ describe('planDoggo (row-sourcing)', () => {
         steps: [{ kind: 'source-rows', description: 'all the companies', count: 999 }],
       }),
     );
-    const plan = await planDoggo('list everything', { rowCount: 0 });
+    const plan = await planBone('list everything', { rowCount: 0 });
     const src = plan!.steps[0] as SourceRowsStep;
     // The planner keeps the requested count as-is; sourceRows itself clamps at run time.
     expect(src.count).toBe(999);

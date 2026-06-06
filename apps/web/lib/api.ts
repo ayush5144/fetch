@@ -285,9 +285,9 @@ export const dogiApi = {
     api.post<ApplyPlanResponse>(`/tables/${tableId}/apply-plan`, { steps }),
 };
 
-// ── Doggo goal-mode (row-sourcing + columns) ──────────────────────────────────
-// Doggo is a superset of the Dogi planner: a plan step is EITHER a row-sourcing
-// step (CREATE rows) or a column step (today's DogiPlanStep). See devx/doggo.md.
+// ── Bone goal-mode (row-sourcing + columns) ──────────────────────────────────
+// Bone is a superset of the Dogi planner: a plan step is EITHER a row-sourcing
+// step (CREATE rows) or a column step (today's DogiPlanStep). See devx/bone.md.
 
 /** A step that CREATES rows — generate `count` entities and insert them as leads. */
 export interface SourceRowsStep {
@@ -305,51 +305,51 @@ export interface SourceRowsStep {
 /** A column step is today's DogiPlanStep, optionally tagged with `kind: 'column'`. */
 export type ColumnPlanStep = DogiPlanStep & { kind?: 'column' };
 
-/** One Doggo plan step: create rows, or build/enrich a column. */
-export type DoggoPlanStep = SourceRowsStep | ColumnPlanStep;
+/** One Bone plan step: create rows, or build/enrich a column. */
+export type BonePlanStep = SourceRowsStep | ColumnPlanStep;
 
-/** A structured plan returned by `POST /tables/:id/doggo/plan`. */
-export interface DoggoPlan {
+/** A structured plan returned by `POST /tables/:id/bone/plan`. */
+export interface BonePlan {
   goal: string;
-  steps: DoggoPlanStep[];
+  steps: BonePlanStep[];
 }
 
 /** A step with no `kind` is a legacy column step (back-compat). */
-export function isSourceRowsStep(step: DoggoPlanStep): step is SourceRowsStep {
+export function isSourceRowsStep(step: BonePlanStep): step is SourceRowsStep {
   return (step as { kind?: string }).kind === 'source-rows';
 }
 
-/** Response from `POST /tables/:id/doggo/plan`. */
-export interface DoggoPlanResponse {
-  plan: DoggoPlan | null;
+/** Response from `POST /tables/:id/bone/plan`. */
+export interface BonePlanResponse {
+  plan: BonePlan | null;
   /** Friendly explanation if plan is null (e.g. no LLM configured). */
   reason?: string;
 }
 
-/** Response from `POST /tables/:id/doggo/run`. */
-export interface DoggoRunResponse {
+/** Response from `POST /tables/:id/bone/run`. */
+export interface BoneRunResponse {
   rowsCreated: number;
   columnsCreated: number;
   enqueued: number;
 }
 
-export const doggoApi = {
-  /** Ask Doggo to plan steps (row-sourcing + columns) for a free-text goal. */
+export const boneApi = {
+  /** Ask Bone to plan steps (row-sourcing + columns) for a free-text goal. */
   plan: (tableId: string, goal: string, apiKey?: string) =>
-    api.post<DoggoPlanResponse>(`/tables/${tableId}/doggo/plan`, { goal, apiKey }),
+    api.post<BonePlanResponse>(`/tables/${tableId}/bone/plan`, { goal, apiKey }),
 
-  /** Run an approved Doggo plan — sources rows, builds columns, enqueues runs. */
-  run: (tableId: string, plan: DoggoPlan, apiKey?: string) =>
-    api.post<DoggoRunResponse>(`/tables/${tableId}/doggo/run`, { plan, apiKey }),
+  /** Run an approved Bone plan — sources rows, builds columns, enqueues runs. */
+  run: (tableId: string, plan: BonePlan, apiKey?: string) =>
+    api.post<BoneRunResponse>(`/tables/${tableId}/bone/run`, { plan, apiKey }),
 };
 
-// ── Per-table Doggo settings (persisted in table.settings.doggo) ──────────────
+// ── Per-table Bone settings (persisted in table.settings.bone) ──────────────
 
-/** Doggo's configurable settings, persisted in `table.settings.doggo`. */
-export interface DoggoSettings {
-  /** The brain (provider/model/keySource) Doggo's planner + created columns use. */
+/** Bone's configurable settings, persisted in `table.settings.bone`. */
+export interface BoneSettings {
+  /** The brain (provider/model/keySource) Bone's planner + created columns use. */
   brain?: DogiBrain;
-  /** Default sources Doggo hands the columns it builds. */
+  /** Default sources Bone hands the columns it builds. */
   defaultSources?: DogiSource[];
 }
 
@@ -364,17 +364,17 @@ async function fetchTableRow(
   return tables.find((t) => t.id === tableId);
 }
 
-export const doggoSettingsApi = {
-  /** Read a table's persisted Doggo settings (empty object if unset). */
-  async get(tableId: string): Promise<DoggoSettings> {
+export const boneSettingsApi = {
+  /** Read a table's persisted Bone settings (empty object if unset). */
+  async get(tableId: string): Promise<BoneSettings> {
     const row = await fetchTableRow(tableId);
-    return ((row?.settings?.doggo as DoggoSettings | undefined) ?? {});
+    return ((row?.settings?.bone as BoneSettings | undefined) ?? {});
   },
 
-  /** Persist a table's Doggo settings, merging into existing `settings`. */
-  async save(tableId: string, doggo: DoggoSettings): Promise<void> {
+  /** Persist a table's Bone settings, merging into existing `settings`. */
+  async save(tableId: string, bone: BoneSettings): Promise<void> {
     const row = await fetchTableRow(tableId);
-    const settings = { ...(row?.settings ?? {}), doggo };
+    const settings = { ...(row?.settings ?? {}), bone };
     await api.patch(`/tables/${tableId}`, { settings });
   },
 };
@@ -469,7 +469,7 @@ export const settingsApi = {
 /** One row of the workspace-wide activity feed, projected from `audit_log`. */
 export interface AuditRow {
   id: string;
-  /** Who performed the action — a user, "dogi", "doggo", or "system". */
+  /** Who performed the action — a user, "dogi", "bone", or "system". */
   actor: string;
   /** The entity type touched, e.g. "lead", "column", "table". */
   entity: string;

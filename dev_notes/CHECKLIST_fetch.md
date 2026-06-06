@@ -380,9 +380,9 @@ only; build after sign-off. Every phase ends with
 - [x] Verified Dogi end-to-end against a real OpenAI key through API → pg-boss → worker → Postgres.
 - [x] **Fix:** split the agent system prompt by execution shape — `SYSTEM_RESEARCH` (never-guess, for web/scrape/native) vs `SYSTEM_TRANSFORM` (produce a value, for LLM-only). The single research prompt had made every LLM-only column return `null`/failed. Documented in `devx/dogi-agent.md` §3/§12/§13.
 
-## Phase G.2 - Grid/UX fixes + Dogi/Doggo config & menu (from the 2026-06-06 review)
+## Phase G.2 - Grid/UX fixes + Dogi/Bone config & menu (from the 2026-06-06 review)
 
-Surfaced by operating the live product; full reasoning in `devx/doggo.md` + `devx/roadmap.md` §"Session findings".
+Surfaced by operating the live product; full reasoning in `devx/bone.md` + `devx/roadmap.md` §"Session findings".
 
 ### G.2a — New table is never a dead end (default blank row)
 - [x] Creating a table seeds **one blank lead row** (so the grid shows row `1`, not "no rows yet").
@@ -407,26 +407,26 @@ Surfaced by operating the live product; full reasoning in `devx/doggo.md` + `dev
 - [x] Render the Overview tables as a **list** (rows: name, #rows, #cols, updated, ⋯ menu) instead of cards. Keep create-table + the per-row delete/rename menu. Consistent tokens.
   - Test: Overview shows tables as a list; create/delete still work.
 
-### G.2e — Dogi & Doggo are configurable and menu-accessible
+### G.2e — Dogi & Bone are configurable and menu-accessible
 - [x] Confirm the **Dogi config modal** persists & drives runs (already verified — keep a regression test).
-- [x] **Doggo settings** (its own + the default Dogi config it hands to columns it builds) are editable from a **Settings/Dogi** surface reachable in the menu.
-  - Test: change Doggo's default brain/provider → a new Doggo run uses it.
+- [x] **Bone settings** (its own + the default Dogi config it hands to columns it builds) are editable from a **Settings/Dogi** surface reachable in the menu.
+  - Test: change Bone's default brain/provider → a new Bone run uses it.
 
-## Phase I - Doggo: autonomous orchestrator + row-sourcing
+## Phase I - Bone: autonomous orchestrator + row-sourcing
 
-The headline gap: the planner only enriches existing rows; nothing **creates** rows. Doggo fixes it. Design: `devx/doggo.md`.
+The headline gap: the planner only enriches existing rows; nothing **creates** rows. Bone fixes it. Design: `devx/bone.md`.
 
 - [x] **Row-sourcing primitive** (backend): given a description + count, generate N entities and **insert N leads** into the table (with provenance + dedupe-aware so re-running doesn't duplicate).
   - Test: "top 10 companies" → 10 leads created; re-run doesn't double them.
-- [x] **Doggo planner** (promote the existing planner): decompose a goal into steps that are **row-sourcing** and/or **column** steps, ordered by `dependsOn`.
+- [x] **Bone planner** (promote the existing planner): decompose a goal into steps that are **row-sourcing** and/or **column** steps, ordered by `dependsOn`.
   - Test: "top 10 companies, their CEOs, CEO LinkedIn" → plan = [source 10 rows] → [col CEO] → [col LinkedIn].
 - [x] **Plan-then-approve by default**, with a **"just do it" toggle** for autonomous execution.
-  - `POST /tables/:id/doggo/plan` (propose) + `POST /tables/:id/doggo/run` (execute; `auto` flag skips approval).
+  - `POST /tables/:id/bone/plan` (propose) + `POST /tables/:id/bone/run` (execute; `auto` flag skips approval).
   - Test: default returns a plan without mutating; `auto:true` creates rows+columns and runs.
 - [x] **Execute**: create rows → create columns → run Dogis in dependency order (reuse the dependency-ordered worker). Each cell carries provenance; every action audited.
   - Test: end-to-end live "top N" goal fills a fresh table.
-- [x] **Doggo settings** persisted (table-scoped and/or global default), incl. the default Dogi config it spawns.
-- [x] **Frontend — Ask Doggo**: an entry on a table; shows the proposed plan; approve/edit; just-do-it toggle; progress while it runs; reachable from the menu.
+- [x] **Bone settings** persisted (table-scoped and/or global default), incl. the default Dogi config it spawns.
+- [x] **Frontend — Ask Bone**: an entry on a table; shows the proposed plan; approve/edit; just-do-it toggle; progress while it runs; reachable from the menu.
   - Test: ask a goal → see plan → approve → table fills with rows + enriched columns.
 - [~] Guardrails: cost estimate + a row/column ceiling + confirm before large autonomous runs; sourced rows respect the table's dedupe.
 
@@ -434,21 +434,21 @@ The headline gap: the planner only enriches existing rows; nothing **creates** r
 
 - [x] Fetch MCP server (read-only first): expose `tables`, `schema`, `rows`, `lead`, `jobs` resources
   - `apps/mcp` (@fetch/mcp), stdio, thin adapter over the REST API. Read tools: list_tables, get_table_schema, query_rows (+provenance), get_lead, get_job, recent_activity; also MCP resources (`fetch://tables`, `.../schema`, `.../rows`, `lead/{id}`). Live smoke: tools/list + list_tables returned real data.
-- [x] MCP write tools: create_table/column, add_leads, run_column/run_cell, ask_doggo/run_doggo, dedupe
-  - Run tools return job ids (async-native, poll `get_job`); `ask_doggo` returns a plan, `run_doggo` commits.
+- [x] MCP write tools: create_table/column, add_leads, run_column/run_cell, ask_bone/run_bone, dedupe
+  - Run tools return job ids (async-native, poll `get_job`); `ask_bone` returns a plan, `run_bone` commits.
 - [~] Cost/dry-run + gate: `estimate_cost` tool + dedupe `preview` shipped; `launch`/sending tools deferred (off critical path).
 - [x] Auth + scoping: reuse `FETCH_API_TOKEN` (optional bearer); **read-only by default** (`FETCH_MCP_READONLY`, writes unregistered in read-only); audit via the API. Per-table scoped tokens deferred.
   - Test: read-only registry exposes only the 6 read tools; read-write adds the 10 writes; bearer set when token present (unit-tested).
 - [ ] Fetch as MCP client: register an external MCP server; enable it per Dogi as an extra tool — *deferred (inbound direction).* 
 
-## Phase J - Reliability round: Doggo correctness, failure visibility, self-hosted search, Bone rename
+## Phase J - Reliability round: Bone correctness, failure visibility, self-hosted search, Bone rename
 
-From the 2026-06-06 review #2 (two real Doggo runs gave partial results). Diagnosis in `devx/doggo.md` + `devx/search-and-scrape.md`. Build in rounds; test + commit each; push per round after the user sees it work.
+From the 2026-06-06 review #2 (two real Bone runs gave partial results). Diagnosis in `devx/bone.md` + `devx/search-and-scrape.md`. Build in rounds; test + commit each; push per round after the user sees it work.
 
-### Round 1 — Doggo row-sourcing correctness (backend + frontend)
+### Round 1 — Bone row-sourcing correctness (backend + frontend)
 - [x] **Create a column for the sourced primary field.** A source-rows step must materialize a column for `primaryField` (e.g. "Company") so the sourced values are visible — not just written into `data`. (This is why "5 automobile companies + CEO + LinkedIn" made only 2 columns, not 3.)
-  - Test: `/doggo/run` on a "top N companies + …" plan creates a `company` column + the enrichment columns; the grid shows company names.
-- [x] **Reuse the seeded blank row** instead of appending. When Doggo sources N rows and the table has only the single default blank row, fill/replace it rather than ending up with N+1 and a guaranteed-failing empty row.
+  - Test: `/bone/run` on a "top N companies + …" plan creates a `company` column + the enrichment columns; the grid shows company names.
+- [x] **Reuse the seeded blank row** instead of appending. When Bone sources N rows and the table has only the single default blank row, fill/replace it rather than ending up with N+1 and a guaranteed-failing empty row.
   - Test: new table (1 blank row) + source 5 → exactly 5 rows, none blank.
 - [x] **Exact count.** Row-sourcing returns exactly the requested count (cap 50); if the model returns more/fewer, trim/pad-by-reprompt to hit the number (or report the shortfall).
   - Test: ask 10 → 10 rows (±0), not 11.
@@ -462,7 +462,7 @@ From the 2026-06-06 review #2 (two real Doggo runs gave partial results). Diagno
   - Test: a failed cell shows the marker; Re-run re-enqueues just that cell.
 - [x] **Audit failures.** A Dogi miss writes an `audit_log` entry (action `enrich_failed`, with the field + reason) so it appears in `/activity` and isn't silently "completed" in `/jobs`.
   - Test: a missed cell appears in `/activity` with a failure action.
-- [x] **Ask Doggo result summary**: report rows created + per-column fill counts + how many cells failed, so the user sees the outcome, not just "queued".
+- [x] **Ask Bone result summary**: report rows created + per-column fill counts + how many cells failed, so the user sees the outcome, not just "queued".
 
 ### Round 3 — Self-hosted search & scrape (OpenSERP + Firecrawl). Design: `devx/search-and-scrape.md`
 - [x] **`webSearch.ts`**: OpenSERP backend; precedence `OPENSERP_URL` → `SERPER_API_KEY` → unavailable. Normalized to the Serper shape.
@@ -487,9 +487,9 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 ### Audit (2026-06-06): job monitor + activity are functional
 - [x] `/jobs` + `/jobs/summary` show real pg-boss status (grouped); `/activity` shows real `audit_log` (incl. `enrich_failed`). Confirmed functional — the only front/back gap is the R3 frontend item above.
 
-### Round 4 — Rename Doggo → Bone (LAST, after the above works)
-- [ ] Rename across code identifiers (`doggo`→`bone`), routes (`/tables/:id/doggo/*` → `/bone/*`), UI ("Ask Doggo" → "Ask Bone"), and docs (`doggo.md` → `bone.md`, all references). Keep Dogi as the cell agent.
-  - Test: full suite green; "Ask Bone" plans+runs end-to-end; no stray "doggo" left.
+### Round 4 — Rename Bone → Bone (LAST, after the above works)
+- [ ] Rename across code identifiers (`bone`→`bone`), routes (`/tables/:id/bone/*` → `/bone/*`), UI ("Ask Bone" → "Ask Bone"), and docs (`bone.md` → `bone.md`, all references). Keep Dogi as the cell agent.
+  - Test: full suite green; "Ask Bone" plans+runs end-to-end; no stray "bone" left.
 
 ## Ship Gate (Clay/Dogi direction)
 
