@@ -507,10 +507,10 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 
 ### Round 8 — Column header: provenance + type on hover (hover-only)
 - [x] Backend: stamp `config.createdBy: 'bone'` on Bone-created **manual** columns (the source-rows primary column) so "by Bone" is real (dogi columns self-identify via `type:'dogi'`).
-- [ ] `columnProvenance(col)` → **"User" | "Dogi" | "Bone" | "Formula"** (`type==='dogi'`→Dogi; `type==='formula'`→Formula; `config.createdBy==='bone'`→Bone; else User).
-- [ ] **Hover the column header → a small tooltip** showing **"{Value type} · by {Provenance}"** (e.g. "Text · by Bone", "Email · by User"). Hover-only — no always-on badge.
-- [ ] The existing `⋯` column menu shows the same **"by {Provenance} · {Type}"** info line at the top, above the existing actions (Run / Edit name / Edit type / Edit config / Duplicate / Delete). Edit stays in the menu.
-- [ ] Keep it minimal + consistent; no new always-on icons. The value-type icon stays where it is.
+- [x] `columnProvenance(col)` → **"User" | "Dogi" | "Bone" | "Formula"** (`type==='dogi'`→Dogi; `type==='formula'`→Formula; `config.createdBy==='bone'`→Bone; else User).
+- [x] **Hover the column header → a small tooltip** showing **"{Value type} · by {Provenance}"** (e.g. "Text · by Bone", "Email · by User"). Hover-only — no always-on badge.
+- [x] The existing `⋯` column menu shows the same **"by {Provenance} · {Type}"** info line at the top, above the existing actions (Run / Edit name / Edit type / Edit config / Duplicate / Delete). Edit stays in the menu.
+- [x] Keep it minimal + consistent; no new always-on icons. The value-type icon stays where it is.
   - Test: a Bone-sourced Company column hover shows "Text · by Bone"; a dogi column shows "… · by Dogi"; a user column shows "by User"; web typecheck clean.
 
 ### Round 9 — Run-the-whole-flow: a Bone agent as a re-runnable unit (PLANNING)
