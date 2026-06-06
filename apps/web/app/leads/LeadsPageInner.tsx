@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Topbar } from '@/components/Topbar';
 import { LeadsGrid } from '@/components/leads/LeadsGrid';
 import { useApi } from '@/lib/useApi';
+import { Modal } from '@/components/Modal';
 import { api, tablesApi, type Lead, type Column, type CellJob, type Table } from '@/lib/api';
 
 const DEFAULT_TABLE = 'tbl_default_leads';
@@ -87,11 +88,13 @@ export default function LeadsPageInner() {
       ) : (
         <LeadsGrid
           tableId={tableId}
+          table={table}
           leads={leads}
           columns={columns}
           jobs={jobs}
           onRefreshLeads={leadsApi.refresh}
           onRefreshColumns={columnsApi.refresh}
+          onRefreshTable={tablesListApi.refresh}
         />
       )}
     </div>
@@ -117,6 +120,7 @@ function TableHeadingMenu({
   const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 240));
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [name, setName] = useState(table.name);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,6 +188,9 @@ function TableHeadingMenu({
             <button className="col-menu-item" onClick={() => { setName(table.name); setError(null); setRenaming(true); }}>
               <span>Aa</span> Rename table
             </button>
+            <button className="col-menu-item" onClick={() => setSettingsOpen(true)}>
+              <span>⚙</span> Table settings
+            </button>
             <div className="col-menu-sep" />
             <button className="col-menu-item danger" disabled={busy} onClick={deleteTable}>
               <span>🗑</span> {busy ? 'Deleting…' : 'Delete table'}
@@ -191,6 +198,73 @@ function TableHeadingMenu({
           </>
         )}
       </div>
+      {settingsOpen && (
+        <TableSettingsModal
+          table={table}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={onRenamed}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * Per-table settings modal. Today it carries a single agent-column toggle; the
+ * layout leaves room for future settings (e.g. dedupe). The toggle persists via
+ * `PATCH /tables/:id { settings: { agentColumn } }`, which the API shallow-merges
+ * into the table's existing settings.
+ */
+function TableSettingsModal({
+  table,
+  onClose,
+  onSaved,
+}: {
+  table: Table;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [agentColumn, setAgentColumn] = useState(Boolean(table.settings?.agentColumn));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggleAgentColumn(next: boolean) {
+    setAgentColumn(next); // optimistic
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/tables/${table.id}`, { settings: { agentColumn: next } });
+      onSaved();
+    } catch (e) {
+      setAgentColumn(!next); // revert on failure
+      setError(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Table settings" maxWidth={420} onClose={onClose}>
+      <div className="table-settings-row">
+        <label className="bone-toggle" style={{ alignItems: 'flex-start' }}>
+          <input
+            type="checkbox"
+            checked={agentColumn}
+            disabled={busy}
+            onChange={(e) => toggleAgentColumn(e.target.checked)}
+          />
+          <span>
+            <span className="table-settings-label">Show a flow agent column</span>
+            <span className="table-settings-help">
+              Adds a compact control in the grid toolbar for each Bone flow so you
+              can re-run the whole flow with one click.
+            </span>
+          </span>
+        </label>
+      </div>
+      {error && (
+        <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>{error}</div>
+      )}
+    </Modal>
   );
 }

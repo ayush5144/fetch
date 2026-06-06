@@ -174,6 +174,38 @@ export interface Campaign {
   createdAt: string;
 }
 
+/**
+ * A re-runnable Bone flow, persisted in `table.settings.flows`. A flow records
+ * what Bone built for a goal so the operator can re-run the whole thing from the
+ * table (re-source rows + re-run the columns it created). See devx/bone.md.
+ */
+export interface Flow {
+  id: string;
+  /** Friendly name (usually the goal, shortened). */
+  name: string;
+  /** The original free-text goal that produced this flow. */
+  goal: string;
+  /** The Bone plan steps this flow runs. */
+  steps: BonePlanStep[];
+  /** The column keys this flow created / fills — shown in the re-run confirm. */
+  columnKeys: string[];
+  /** How many row-sourcing steps the flow has (for the "add more rows" hint). */
+  sourceSteps: number;
+  createdAt: string;
+}
+
+/** Per-table settings, shallow-merged on `PATCH /tables/:id { settings }`. */
+export interface TableSettings {
+  /** Example/seed table: cannot be deleted; some columns are locked. */
+  protected?: boolean;
+  /** Bone's configurable settings (brain + default sources). */
+  bone?: BoneSettings;
+  /** Re-runnable flows Bone has created for this table. */
+  flows?: Flow[];
+  /** UI toggle: render a lightweight flow-agent control in the grid. */
+  agentColumn?: boolean;
+}
+
 export interface Table {
   id: string;
   name: string;
@@ -183,7 +215,7 @@ export interface Table {
   columnCount: number;
   createdAt: string;
   updatedAt?: string;
-  settings?: { protected?: boolean };
+  settings?: TableSettings;
 }
 
 // ── Phase G: Dedupe ──────────────────────────────────────────────────────────
@@ -221,7 +253,32 @@ export const tablesApi = {
   /** Dedupe the table by a set of key columns — merges duplicates into oldest match. */
   dedupe: (tableId: string, keys: string[]) =>
     api.post<DedupeResult>(`/tables/${tableId}/dedupe`, { keys }),
+
+  /**
+   * Re-run a saved Bone flow — `POST /tables/:id/flow/:flowId/run`.
+   * `sourceMore` optionally adds N more sourced rows (clamp 0–50 in the UI);
+   * `force` re-runs cells that already have a value.
+   */
+  runFlow: (
+    tableId: string,
+    flowId: string,
+    opts?: { sourceMore?: number; force?: boolean },
+  ) =>
+    api.post<FlowRunResult>(
+      `/tables/${tableId}/flow/${flowId}/run`,
+      opts && (opts.sourceMore !== undefined || opts.force !== undefined) ? opts : undefined,
+    ),
 };
+
+/** Result of re-running a Bone flow. */
+export interface FlowRunResult {
+  /** How many new rows the flow's row-sourcing steps created. */
+  rowsCreated: number;
+  /** How many columns the flow re-ran. */
+  columnsRun: number;
+  /** How many cell runs were enqueued. */
+  enqueued: number;
+}
 
 // ── Lead-level run actions (Phase J · Round 2) ────────────────────────────────
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, estimateCost, tablesApi, leadsApi, settingsApi, searchAvailability, isCellFailed, type Column, type Lead, type CellJob, type SearchAvailability } from '@/lib/api';
+import { api, estimateCost, tablesApi, leadsApi, settingsApi, searchAvailability, isCellFailed, type Column, type Lead, type CellJob, type SearchAvailability, type Table, type Flow } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
 import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
@@ -172,16 +172,20 @@ const ADD_W = 52;
 
 interface Props {
   tableId: string;
+  /** The table's row (incl. settings.flows / agentColumn). Undefined while loading. */
+  table?: Table;
   leads: Lead[];
   columns: Column[];
   jobs: CellJob[];
   onRefreshLeads: () => void;
   onRefreshColumns: () => void;
+  /** Refresh the tables list (used after a flow run / settings change). */
+  onRefreshTable?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRefreshColumns }: Props) {
+export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads, onRefreshColumns, onRefreshTable }: Props) {
   // ── Selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -231,6 +235,13 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   const [dedupe, setDedupe] = useState<{ col: Column; groups: number; rows: number } | null>(null);
   const [dedupeBusy, setDedupeBusy] = useState(false);
   const [dedupeMsg, setDedupeMsg] = useState<string | null>(null);
+
+  // ── Run flow (Round 9) — pick a flow, confirm modal, result message
+  const [flowMenu, setFlowMenu] = useState<DOMRect | null>(null);
+  const [flowConfirm, setFlowConfirm] = useState<Flow | null>(null);
+  const [flowMore, setFlowMore] = useState('0');
+  const [flowBusy, setFlowBusy] = useState(false);
+  const [flowMsg, setFlowMsg] = useState<string | null>(null);
 
   // ── Column resize
   const resizeState = useRef<{
@@ -486,6 +497,45 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
       setDedupe(null);
     } finally {
       setDedupeBusy(false);
+    }
+  }
+
+  // ── Run flow (Round 9) ──────────────────────────────────────────────────────
+
+  /** Open the confirm modal for a flow (resets the "add more rows" input). */
+  function openFlowConfirm(flow: Flow) {
+    setFlowMsg(null);
+    setFlowMenu(null);
+    setFlowMore('0');
+    setFlowConfirm(flow);
+  }
+
+  /** Re-run the confirmed flow, optionally sourcing N more rows (clamped 0–50). */
+  async function confirmRunFlow() {
+    if (!flowConfirm || flowBusy) return;
+    const n = Math.max(0, Math.min(50, Math.floor(Number(flowMore) || 0)));
+    setFlowBusy(true);
+    try {
+      const res = await tablesApi.runFlow(tableId, flowConfirm.id, {
+        sourceMore: n || undefined,
+      });
+      setFlowConfirm(null);
+      setFlowMsg(
+        `Re-ran ${res.columnsRun} column${res.columnsRun !== 1 ? 's' : ''}; ` +
+          `added ${res.rowsCreated} row${res.rowsCreated !== 1 ? 's' : ''}; ` +
+          `${res.enqueued} cell${res.enqueued !== 1 ? 's' : ''} queued`,
+      );
+      setTimeout(() => setFlowMsg(null), 6000);
+      onRefreshLeads();
+      onRefreshColumns();
+      onRefreshTable?.();
+    } catch (e) {
+      console.error('run flow failed', e);
+      setFlowMsg('Could not run flow — please try again.');
+      setTimeout(() => setFlowMsg(null), 6000);
+      setFlowConfirm(null);
+    } finally {
+      setFlowBusy(false);
     }
   }
 
@@ -755,6 +805,11 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
     (j) => j.status === 'running' || j.status === 'queued',
   ).length;
 
+  // Re-runnable Bone flows saved on this table (Round 9). The toolbar control
+  // (and the optional agent chips) only render when there's at least one.
+  const flows = table?.settings?.flows ?? [];
+  const agentColumn = Boolean(table?.settings?.agentColumn);
+
   return (
     <>
       {/* Toolbar */}
@@ -831,6 +886,29 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
             {dedupeMsg}
           </span>
         )}
+        {flowMsg && (
+          <span className="pill pill-green" style={{ fontSize: 12 }}>
+            {flowMsg}
+          </span>
+        )}
+        {flows.length === 1 && (
+          <button
+            className="btn btn-ghost btn-sm"
+            title={`Re-run the “${flows[0].name}” flow for all rows`}
+            onClick={() => openFlowConfirm(flows[0])}
+          >
+            Run flow: {flows[0].name} ▷
+          </button>
+        )}
+        {flows.length > 1 && (
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Re-run a saved flow"
+            onClick={(e) => setFlowMenu(e.currentTarget.getBoundingClientRect())}
+          >
+            Run flow ▷
+          </button>
+        )}
         <button
           className="btn btn-accent btn-sm"
           onClick={() => { setDogiSuccessMsg(null); setShowAskDogi(true); }}
@@ -841,6 +919,28 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           Import CSV
         </button>
       </div>
+
+      {/* Optional flow-agent control row (Round 9). Off by default — only when
+          settings.agentColumn is on AND the table has flows. A true value-less
+          grid column is awkward in this fixed grid structure (cells are derived
+          per row), so we render a compact flow chip with a ▷ pinned in this
+          header row instead. The ▷ runs the whole flow via the same confirm. */}
+      {agentColumn && flows.length > 0 && (
+        <div className="flow-agent-row" role="toolbar" aria-label="Flow agents">
+          <span className="flow-agent-row-label">Flow agents</span>
+          {flows.map((flow) => (
+            <button
+              key={flow.id}
+              className="flow-chip"
+              title={`Re-run the “${flow.name}” flow for all rows`}
+              onClick={() => openFlowConfirm(flow)}
+            >
+              <span className="flow-chip-name">{flow.name}</span>
+              <span className="flow-chip-run" aria-hidden>▷</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Scrollable grid. The table width is the sum of all column widths so
           columns keep a real width (never squish); past the viewport it scrolls
@@ -1230,6 +1330,71 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
             <strong>{dedupe.rows}</strong> row{dedupe.rows !== 1 ? 's' : ''} into their oldest
             match (existing values are never overwritten). Continue?
           </p>
+        </Modal>
+      )}
+
+      {/* Run-flow picker (multiple flows) */}
+      {flowMenu && flows.length > 1 && (
+        <>
+          <div className="col-menu-backdrop" onClick={() => setFlowMenu(null)} />
+          <div
+            className="col-menu"
+            role="menu"
+            style={{
+              top: Math.min(flowMenu.bottom + 4, window.innerHeight - 220),
+              left: Math.max(8, Math.min(flowMenu.left, window.innerWidth - 260)),
+              minWidth: 220,
+            }}
+          >
+            <div className="col-menu-info">Re-run a flow</div>
+            {flows.map((flow) => (
+              <button
+                key={flow.id}
+                className="col-menu-item"
+                onClick={() => openFlowConfirm(flow)}
+              >
+                <span aria-hidden>▷</span> {flow.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Run-flow confirm modal */}
+      {flowConfirm && (
+        <Modal
+          title="Re-run flow"
+          maxWidth={460}
+          onClose={() => { if (!flowBusy) setFlowConfirm(null); }}
+          footer={
+            <>
+              <button className="btn btn-ghost" disabled={flowBusy} onClick={() => setFlowConfirm(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-accent" disabled={flowBusy} onClick={confirmRunFlow}>
+                {flowBusy ? 'Running…' : 'Run flow'}
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-soft)' }}>
+            Re-run <strong>{flowConfirm.name}</strong> — this will run{' '}
+            <strong>{flowConfirm.columnKeys.join(', ') || 'its columns'}</strong> for all rows.
+          </p>
+          <label className="flow-more-field">
+            <span className="flow-more-label">Add N more rows</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={50}
+              value={flowMore}
+              disabled={flowBusy}
+              onChange={(e) => setFlowMore(e.target.value)}
+              style={{ width: 96 }}
+            />
+            <span className="muted" style={{ fontSize: 12 }}>0 = none (max 50)</span>
+          </label>
         </Modal>
       )}
 
