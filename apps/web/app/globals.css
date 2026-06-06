@@ -676,6 +676,11 @@ table.tbl {
   border: 1px solid var(--red);
   color: var(--red);
 }
+.doggo-banner-green {
+  background: var(--green-soft);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
 
 /* progress bar (analytics funnel) */
 .bar {
@@ -972,8 +977,9 @@ table.grid-tbl {
 .grid-cell-num {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding-right: 10px;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 6px 0 8px;
   height: var(--grid-row-h);
   font-size: 12px;
   color: var(--faint);
@@ -982,6 +988,31 @@ table.grid-tbl {
 }
 .grid-cell-num:active {
   cursor: grabbing;
+}
+.grid-cell-num-idx {
+  margin-left: auto;
+}
+/* Hover-revealed "re-run row" affordance on the row-number cell. */
+.grid-row-rerun {
+  opacity: 0;
+  cursor: pointer;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: opacity 0.1s ease;
+}
+.grid-tbl tbody tr:hover .grid-row-rerun {
+  opacity: 1;
+}
+.grid-row-rerun:hover {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* Data cells — comfortable padding, not corner-to-corner */
@@ -1087,6 +1118,21 @@ table.grid-tbl {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+/* Failed Dogi cell: ran and found nothing. Calm amber pill, distinct from the
+   red live-job error and the plain empty "▷ Run" cell. */
+.grid-cell-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+  background: var(--amber-soft);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Inline edit input */

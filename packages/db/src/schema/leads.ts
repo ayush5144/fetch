@@ -94,12 +94,25 @@ export type NewLead = typeof leads.$inferInsert;
 /**
  * Shape of a single enriched cell's provenance, stored under
  * `enrichmentConf[key]` and mirrored into `data[key]` as the value.
+ *
+ * Per-cell status (Phase J): a filled cell carries `status:'filled'`; a failed
+ * cell is stored separately as `{ status:'failed', error, at }` with NO value in
+ * `data`. A legacy entry with `confidence`/`source` but no `status` is read as
+ * filled (back-compat); an absent entry means the cell was never run.
  */
 export interface CellProvenance {
+  status?: 'filled';
   confidence: number;
   source: string | null;
   provider?: string;
   filledAt?: string;
+}
+
+/** A failed cell's per-cell record under `enrichmentConf[key]`. */
+export interface CellFailure {
+  status: 'failed';
+  error: string;
+  at: string;
 }
 
 /** Convenience SQL fragment for the GIN-indexed JSONB containment operator. */

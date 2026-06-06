@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, estimateCost, tablesApi, type Column, type Lead, type CellJob } from '@/lib/api';
+import { api, estimateCost, tablesApi, leadsApi, isCellFailed, type Column, type Lead, type CellJob } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
 import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
@@ -78,7 +78,8 @@ function cellState(
   lead: Lead,
   col: Column,
   jobs: CellJob[],
-): 'empty' | 'queued' | 'running' | 'filled' | 'error' {
+): 'empty' | 'queued' | 'running' | 'filled' | 'error' | 'failed' {
+  // A live job (queued/running/error) always wins — it reflects the current run.
   const job = jobs.find((j) => j.leadId === lead.id && j.columnKey === col.key);
   if (job) {
     if (job.status === 'error') return 'error';
@@ -87,6 +88,9 @@ function cellState(
   }
   const v = getCellValue(lead, col);
   if (v !== undefined && v !== null && v !== '') return 'filled';
+  // No value and no live job: a recorded failure in enrichmentConf means the
+  // cell ran and found nothing — distinct from a never-run empty cell.
+  if (isCellFailed(lead.enrichmentConf?.[col.key])) return 'failed';
   return 'empty';
 }
 
@@ -182,7 +186,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   const [rowDragOver, setRowDragOver] = useState<{ id: string; side: 'above' | 'below' } | null>(null);
 
   // ── Bulk actions
-  const [bulkBusy, setBulkBusy] = useState<'delete' | 'run' | null>(null);
+  const [bulkBusy, setBulkBusy] = useState<'delete' | 'run' | 'rerun' | null>(null);
 
   // ── Add row (blank — the user fills this table's own columns inline)
   const [addLeadBusy, setAddLeadBusy] = useState(false);
@@ -506,6 +510,37 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
     }
   }
 
+  /**
+   * Re-run every Dogi column for one lead — `POST /leads/:id/run`. Used by the
+   * row's "Re-run row" action (re-runs empty/failed cells; pass force to redo
+   * filled ones too). Cells re-enter running → filled/failed after a refresh.
+   */
+  async function rerunRow(leadId: string, force?: boolean) {
+    try {
+      await leadsApi.rerunRow(leadId, force);
+      setTimeout(onRefreshLeads, 500);
+    } catch (e) {
+      console.error('re-run row failed', e);
+    }
+  }
+
+  /** Re-run all selected rows (bulk "Re-run row" from the selection bar). */
+  async function bulkRerunRows() {
+    const leadIds = [...selected];
+    if (leadIds.length === 0) return;
+    setBulkBusy('rerun');
+    try {
+      await Promise.all(leadIds.map((id) => leadsApi.rerunRow(id)));
+      setTimeout(() => {
+        onRefreshLeads();
+        setBulkBusy(null);
+      }, 500);
+    } catch (e) {
+      console.error('bulk re-run rows failed', e);
+      setBulkBusy(null);
+    }
+  }
+
   // ── Column resize ──────────────────────────────────────────────────────────
 
   function onResizeStart(e: React.MouseEvent, col: Column, th: HTMLTableCellElement) {
@@ -655,6 +690,14 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
               onClick={bulkRun}
             >
               {bulkBusy === 'run' ? 'Running…' : '▷ Run'}
+            </button>
+            <button
+              className="bulk-bar-btn"
+              disabled={bulkBusy === 'rerun'}
+              title="Re-run every Dogi column for the selected rows"
+              onClick={bulkRerunRows}
+            >
+              {bulkBusy === 'rerun' ? 'Re-running…' : '↻ Re-run row'}
             </button>
             <button
               className="bulk-bar-btn danger"
@@ -845,9 +888,18 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
                       />
                     </div>
                   </td>
-                  {/* Row number */}
+                  {/* Row number — hover reveals "Re-run row" (all Dogi columns) */}
                   <td>
-                    <div className="grid-cell-num" title="Drag to reorder">{idx + 1}</div>
+                    <div className="grid-cell-num" title="Drag to reorder">
+                      <span className="grid-cell-num-idx">{idx + 1}</span>
+                      <button
+                        className="grid-row-rerun"
+                        title="Re-run all Dogi columns for this row"
+                        onClick={(e) => { e.stopPropagation(); rerunRow(lead.id); }}
+                      >
+                        ↻
+                      </button>
+                    </div>
                   </td>
                   {/* User columns */}
                   {columns.map((col) => (
@@ -1063,7 +1115,8 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           tableId={tableId}
           onClose={() => setShowAskDogi(false)}
           onDone={({ rowsCreated, columnsCreated, enqueued }) => {
-            setShowAskDogi(false);
+            // Refresh the grid; the modal stays open to show its own result
+            // summary and closes itself when the user dismisses it.
             onRefreshColumns();
             onRefreshLeads();
             const parts: string[] = [];
@@ -1208,10 +1261,39 @@ function GridCell({
     );
   }
 
+  // Failed: the cell ran and found nothing (recorded in enrichmentConf). Show a
+  // clear ⚠ marker with the reason on hover (title) or click (side-peek), plus a
+  // Re-run. This is distinct from a never-run "empty" cell (which shows ▷ Run).
+  if (state === 'failed') {
+    const reason = isCellFailed(prov) ? prov.error : 'This cell ran but found nothing.';
+    return (
+      <td
+        onClick={onPeek}
+        style={{ cursor: 'pointer' }}
+        title={`Failed: ${reason}`}
+      >
+        <div className="grid-cell">
+          <span className="grid-cell-failed">⚠ failed</span>
+          <button
+            className="grid-cell-run"
+            onClick={(e) => { e.stopPropagation(); onRun(); }}
+            style={{ opacity: 1 }}
+            title="Re-run this cell"
+          >
+            ↻ Re-run
+          </button>
+        </div>
+      </td>
+    );
+  }
+
   if (state === 'filled' || (value !== undefined && value !== null && value !== '')) {
     const displayValue = String(value);
     const isStrong = col.key === 'firstName' || col.key === 'lastName' || col.key === 'company';
     const isMono = col.key === 'email' || vt === 'email' || vt === 'url';
+    // A filled cell's conf carries provenance (legacy convention: confidence/
+    // source with no `status`). A failed conf never coexists with a value.
+    const filledProv = prov && !isCellFailed(prov) ? prov : undefined;
 
     return (
       <td
@@ -1238,21 +1320,21 @@ function GridCell({
           >
             {displayValue}
           </span>
-          {prov && (
+          {filledProv && (
             <span className="grid-cell-conf">
-              {prov.source ? (
+              {filledProv.source ? (
                 <a
-                  href={prov.source}
+                  href={filledProv.source}
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  title={`${Math.round(prov.confidence * 100)}% confidence — ${prov.source}`}
+                  title={`${Math.round(filledProv.confidence * 100)}% confidence — ${filledProv.source}`}
                 >
-                  ◔{Math.round(prov.confidence * 100)}%
+                  ◔{Math.round(filledProv.confidence * 100)}%
                 </a>
               ) : (
-                <span title={`${Math.round(prov.confidence * 100)}% confidence`}>
-                  ◔{Math.round(prov.confidence * 100)}%
+                <span title={`${Math.round(filledProv.confidence * 100)}% confidence`}>
+                  ◔{Math.round(filledProv.confidence * 100)}%
                 </span>
               )}
             </span>

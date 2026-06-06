@@ -16,9 +16,28 @@ export function isCellEmpty(lead: Lead, key: string): boolean {
 }
 
 /**
+ * Read a cell's per-cell status from `enrichmentConf[key]`.
+ *
+ * Back-compat: an entry that carries `confidence`/`source` but no explicit
+ * `status` is treated as **filled** (legacy cells written before per-cell status
+ * existed). An entirely absent entry means the cell was never run (empty). We do
+ * NOT migrate-rewrite legacy entries — writers add `status` going forward.
+ */
+export function cellStatusOf(lead: Lead, key: string): 'filled' | 'failed' | 'pending' | null {
+  const conf = (lead.enrichmentConf as Record<string, unknown>) ?? {};
+  const entry = conf[key] as Record<string, unknown> | undefined;
+  if (!entry) return null; // never run
+  if (entry.status === 'failed') return 'failed';
+  if (entry.status === 'filled') return 'filled';
+  // Legacy: has provenance but no status ⇒ filled.
+  if (entry.confidence !== undefined || entry.source !== undefined) return 'filled';
+  return 'pending';
+}
+
+/**
  * Write one cell's value + provenance back to the lead row using a JSONB merge,
- * so concurrent writes to *different* keys don't clobber each other. Returns the
- * updated lead.
+ * so concurrent writes to *different* keys don't clobber each other. Stamps
+ * `status:'filled'` so a successful cell is unambiguous (vs a failed one).
  */
 export async function writeCell(
   leadId: string,
@@ -26,6 +45,7 @@ export async function writeCell(
   result: { value: unknown; confidence: number; source: string | null; provider?: string },
 ): Promise<void> {
   const provenance: CellProvenance = {
+    status: 'filled',
     confidence: result.confidence,
     source: result.source,
     provider: result.provider,
@@ -39,6 +59,25 @@ export async function writeCell(
       data: sql`jsonb_set(${leads.data}, ${`{${key}}`}, ${JSON.stringify(result.value)}::jsonb, true)`,
       enrichmentConf: sql`jsonb_set(${leads.enrichmentConf}, ${`{${key}}`}, ${JSON.stringify(
         provenance,
+      )}::jsonb, true)`,
+    })
+    .where(eq(leads.id, leadId));
+}
+
+/**
+ * Mark a cell as **failed** in `enrichmentConf[key]` WITHOUT writing any value
+ * into `data[key]`. Keeping `data` untouched means `isCellEmpty` stays true, so
+ * a failed cell re-runs naturally and the GRID can distinguish a tried-and-empty
+ * cell from a never-run one. `error` is a short human reason; `at` is an ISO
+ * timestamp (app runtime — not the workflow sandbox, so Date is fine here).
+ */
+export async function writeCellFailure(leadId: string, key: string, error: string): Promise<void> {
+  const failure = { status: 'failed' as const, error, at: new Date().toISOString() };
+  await db
+    .update(leads)
+    .set({
+      enrichmentConf: sql`jsonb_set(${leads.enrichmentConf}, ${`{${key}}`}, ${JSON.stringify(
+        failure,
       )}::jsonb, true)`,
     })
     .where(eq(leads.id, leadId));

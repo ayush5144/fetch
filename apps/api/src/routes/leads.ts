@@ -4,7 +4,7 @@ import { CsvNormalizer, ManualNormalizer, readCsvHeaders } from '@fetch/connecto
 import { audit, enqueue, ingestLead } from '@fetch/core';
 import { DEFAULT_TABLE_ID, db, leads, sources } from '@fetch/db';
 import { desc, eq } from 'drizzle-orm';
-import { getColumn, validateCellValue, valueTypeOf } from '@fetch/columns';
+import { dogiColumnsForLead, getColumn, isCellEmpty, validateCellValue, valueTypeOf } from '@fetch/columns';
 
 /**
  * /leads — the table's data API.
@@ -177,6 +177,46 @@ leadsRoutes.post('/:id/run/:columnKey', async (c) => {
   // dogi | formula resolve in the worker via the enrich queue.
   const jobId = await enqueue('enrich', { leadId, columnKey, apiKey: body.apiKey }, { leadId });
   return c.json({ jobId }, 202);
+});
+
+const runRowSchema = z.object({ force: z.boolean().optional(), apiKey: z.string().optional() });
+
+/**
+ * Re-run ALL dogi columns for one lead (the "re-run this row" trigger). By
+ * default this is run-only-if-empty: each dogi column whose cell is empty is
+ * enqueued (a failed cell has no value, so it re-runs naturally). With
+ * `{ force: true }` we first clear each dogi cell's value (so isCellEmpty is true
+ * again) and enqueue every dogi column, re-running even filled cells. Reuses the
+ * same per-cell enrich queue as the single-cell trigger. Returns the count
+ * enqueued.
+ */
+leadsRoutes.post('/:id/run', async (c) => {
+  const leadId = c.req.param('id');
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+  if (!lead) return c.json({ error: 'lead not found' }, 404);
+
+  const body = runRowSchema.parse(await c.req.json().catch(() => ({})));
+  const dogiCols = await dogiColumnsForLead(leadId);
+
+  // Decide which columns to run. Force clears the cell first so the worker's
+  // run-only-if-empty guard re-runs it; otherwise we only run empty cells.
+  const toRun = body.force
+    ? dogiCols
+    : dogiCols.filter(({ outputKey }) => isCellEmpty(lead, outputKey));
+
+  if (body.force && toRun.length > 0) {
+    // Clear each forced cell's value (data only — enrichmentConf is overwritten
+    // by the next fill/failure) so isCellEmpty becomes true and it re-runs.
+    const data = { ...(lead.data as Record<string, unknown>) };
+    for (const { outputKey } of toRun) delete data[outputKey];
+    await db.update(leads).set({ data }).where(eq(leads.id, leadId));
+  }
+
+  for (const { column } of toRun) {
+    await enqueue('enrich', { leadId, columnKey: column.key, apiKey: body.apiKey }, { leadId });
+  }
+
+  return c.json({ enqueued: toRun.length }, 202);
 });
 
 /**

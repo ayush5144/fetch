@@ -1,6 +1,6 @@
 'use client';
 
-import type { Lead, Column } from '@/lib/api';
+import { isCellFailed, type Lead, type Column } from '@/lib/api';
 
 /**
  * Side-peek panel for a single cell. Shows full value, provenance URL, model,
@@ -15,7 +15,10 @@ interface Props {
 
 export function CellPeek({ lead, column, onRerun, onClose }: Props) {
   const value = lead.data?.[column.key];
-  const prov = lead.enrichmentConf?.[column.key];
+  const conf = lead.enrichmentConf?.[column.key];
+  const failed = isCellFailed(conf);
+  // Provenance (confidence/source/model) only exists on a filled conf.
+  const prov = failed ? undefined : conf;
   const isComputed = column.type === 'dogi' || column.type === 'enrichment' || column.type === 'agent';
 
   return (
@@ -52,6 +55,20 @@ export function CellPeek({ lead, column, onRerun, onClose }: Props) {
               )}
             </div>
           </div>
+
+          {failed && (
+            <div className="doggo-banner doggo-banner-amber">
+              <strong>⚠ This cell ran but didn’t find a value.</strong>
+              {conf?.error && (
+                <div style={{ marginTop: 4, color: 'var(--ink-soft)' }}>{conf.error}</div>
+              )}
+              {conf?.at && (
+                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
+                  {new Date(conf.at).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
 
           {prov && (
             <>
@@ -119,7 +136,7 @@ export function CellPeek({ lead, column, onRerun, onClose }: Props) {
         {isComputed && (
           <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
             <button className="btn btn-ghost btn-sm" onClick={() => { onRerun(); onClose(); }} style={{ width: '100%' }}>
-              ▷ Re-run Dogi
+              {failed ? '↻ Re-run Dogi' : '▷ Re-run Dogi'}
             </button>
           </div>
         )}

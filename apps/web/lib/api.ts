@@ -28,6 +28,39 @@ export const api = {
   base: BASE,
 };
 
+// ── Per-cell enrichment state (Phase J · Round 2) ─────────────────────────────
+// Each entry in `lead.enrichmentConf[columnKey]` is one of:
+//   filled  → { status:'filled', confidence, source, provider? }
+//             (legacy: has confidence/source but no `status` ⇒ treat as filled)
+//   failed  → { status:'failed', error, at }   (no value in data[columnKey])
+//   absent  ⇒ never run (empty)
+
+/** A Dogi cell that produced a value — has provenance. */
+export interface CellFilled {
+  status?: 'filled';
+  confidence: number;
+  source: string | null;
+  provider?: string | null;
+  model?: string | null;
+}
+
+/** A Dogi cell whose last run failed — no value, carries the reason. */
+export interface CellFailed {
+  status: 'failed';
+  /** Human-readable failure reason to surface in the cell peek / tooltip. */
+  error: string;
+  /** ISO timestamp of when the failure was recorded. */
+  at?: string;
+}
+
+/** Per-cell enrichment state, keyed by column key. */
+export type CellConf = CellFilled | CellFailed;
+
+/** A cell conf is "failed" only when it explicitly carries status:'failed'. */
+export function isCellFailed(conf: CellConf | undefined): conf is CellFailed {
+  return conf?.status === 'failed';
+}
+
 // ── Domain shapes (mirror the API responses we actually render) ───────────────
 export interface Lead {
   id: string;
@@ -36,7 +69,7 @@ export interface Lead {
   email: string | null;
   title: string | null;
   enrichmentStatus: string;
-  enrichmentConf: Record<string, { confidence: number; source: string | null; model?: string | null }>;
+  enrichmentConf: Record<string, CellConf>;
   validationStatus: string;
   approvalStatus: string;
   sendStatus: string;
@@ -184,6 +217,25 @@ export const tablesApi = {
   /** Dedupe the table by a set of key columns — merges duplicates into oldest match. */
   dedupe: (tableId: string, keys: string[]) =>
     api.post<DedupeResult>(`/tables/${tableId}/dedupe`, { keys }),
+};
+
+// ── Lead-level run actions (Phase J · Round 2) ────────────────────────────────
+
+export const leadsApi = {
+  /**
+   * Re-run a single Dogi cell — `POST /leads/:id/run/:columnKey`.
+   * `apiKey` is forwarded for BYOK columns (session only, never persisted).
+   */
+  rerunCell: (leadId: string, columnKey: string, apiKey?: string) =>
+    api.post<void>(`/leads/${leadId}/run/${columnKey}`, apiKey ? { apiKey } : undefined),
+
+  /**
+   * Re-run every Dogi column for one lead — `POST /leads/:id/run`.
+   * Pass `{ force: true }` to re-run cells that already have a value, otherwise
+   * only empty/failed cells are re-run.
+   */
+  rerunRow: (leadId: string, force?: boolean) =>
+    api.post<void>(`/leads/${leadId}/run`, force ? { force } : undefined),
 };
 
 // ── Dogi goal-mode (Phase D) ─────────────────────────────────────────────────

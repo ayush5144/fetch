@@ -1,4 +1,4 @@
-import { findReadyDependents, isCellEmpty, runCell } from '@fetch/columns';
+import { deriveLeadEnrichmentStatus, findReadyDependents, isCellEmpty, runCell } from '@fetch/columns';
 import { db, leads } from '@fetch/db';
 import { enqueue, type EnrichJobData } from '@fetch/core';
 import { eq } from 'drizzle-orm';
@@ -16,6 +16,13 @@ import { eq } from 'drizzle-orm';
  * dependency is now filled for this lead, and whose own cell is empty — becomes
  * runnable, so we enqueue it. This chains a plan's step 2 to run only once step
  * 1 is done, per lead, reusing the same run-only-if-empty fan-out.
+ *
+ * Per-lead status (Phase J): a Dogi cell that misses records its own
+ * `enrichmentConf[key] = { status:'failed', ... }` + an audit row inside runCell.
+ * The single `leads.enrichmentStatus` is then DERIVED from all the lead's dogi
+ * cells (deriveLeadEnrichmentStatus) instead of being last-writer-wins, so a
+ * lead whose CEO filled but LinkedIn missed no longer flips the whole lead to a
+ * misleading "failed"/"done" on the last cell that happened to run.
  */
 export async function enrichHandler(data: EnrichJobData): Promise<void> {
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, data.leadId) });
@@ -27,13 +34,16 @@ export async function enrichHandler(data: EnrichJobData): Promise<void> {
   await db.update(leads).set({ enrichmentStatus: 'running' }).where(eq(leads.id, data.leadId));
 
   // BYOK key, if the run carries one, is threaded to the column resolver for
-  // this job only. It is never logged or persisted.
+  // this job only. It is never logged or persisted. runCell records a per-cell
+  // failure marker + audit row on a miss (no value written → cell stays empty).
   const filled = await runCell(data.leadId, data.columnKey, { apiKey: data.apiKey });
 
-  await db
-    .update(leads)
-    .set({ enrichmentStatus: filled ? 'done' : 'failed' })
-    .where(eq(leads.id, data.leadId));
+  // Re-derive the lead's status from ALL its dogi cells, not just this one. A
+  // null result means "no clear value" → leave the prior status as-is.
+  const derived = await deriveLeadEnrichmentStatus(data.leadId);
+  if (derived) {
+    await db.update(leads).set({ enrichmentStatus: derived }).where(eq(leads.id, data.leadId));
+  }
 
   // On a successful fill, chain any now-runnable dependent dogi steps.
   if (filled) {

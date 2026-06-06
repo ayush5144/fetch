@@ -97,6 +97,10 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
+  // ── Phase 4: result summary — shown after a successful run so the user sees
+  // what was created and that enrichment is now running (failures show a ⚠).
+  const [result, setResult] = useState<{ rowsCreated: number; columnsCreated: number; enqueued: number } | null>(null);
+
   // ── "Just do it": skip the review pause and run immediately after planning.
   const [justDoIt, setJustDoIt] = useState(false);
 
@@ -179,6 +183,10 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     setRunError(null);
     try {
       const res = await doggoApi.run(tableId, { goal: p.goal, steps: stepsToRun });
+      // Refresh the grid in the background, then show the summary so the user
+      // sees what was created and that enrichment is now running.
+      setResult(res);
+      setRunning(false);
       onDone(res);
     } catch (e) {
       setRunError(e instanceof Error ? e.message : 'Failed to run the plan');
@@ -243,6 +251,41 @@ export function AskDoggoModal({ tableId, onClose, onDone }: Props) {
     ?? (defaultModel?.provider as LLMProvider | undefined)
     ?? 'openai';
   const brainModel = doggoSettings.brain?.model ?? defaultModel?.model ?? '';
+
+  // ── Render: result summary phase ───────────────────────────────────────────
+  // After a successful run, show a calm on-brand summary instead of just
+  // "queued": what was created, plus a note that any failed cells show a ⚠.
+
+  if (result) {
+    const parts: string[] = [];
+    if (result.rowsCreated > 0) parts.push(`${result.rowsCreated} row${result.rowsCreated !== 1 ? 's' : ''}`);
+    if (result.columnsCreated > 0) parts.push(`${result.columnsCreated} column${result.columnsCreated !== 1 ? 's' : ''}`);
+    const created = parts.length > 0 ? `Created ${parts.join(', ')}.` : 'Nothing new to create.';
+    return (
+      <Modal
+        title="Doggo is on it 🐕"
+        onClose={onClose}
+        maxWidth={520}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+            <button className="btn btn-accent btn-sm" onClick={onClose}>
+              Done
+            </button>
+          </div>
+        }
+      >
+        <div className="doggo-banner doggo-banner-green" style={{ lineHeight: 1.6 }}>
+          <strong>{created}</strong>
+          {result.enqueued > 0 && (
+            <div style={{ marginTop: 6, color: 'var(--ink-soft)' }}>
+              Enrichment is running — any cells that fail will show a{' '}
+              <span aria-hidden>⚠</span> you can re-run.
+            </div>
+          )}
+        </div>
+      </Modal>
+    );
+  }
 
   // ── Render: goal input phase ───────────────────────────────────────────────
 

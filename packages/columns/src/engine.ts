@@ -1,7 +1,8 @@
 import { columns as columnsTable, db, leads } from '@fetch/db';
 import type { Column, Lead } from '@fetch/db';
+import { audit } from '@fetch/core';
 import { and, eq, inArray } from 'drizzle-orm';
-import { isCellEmpty, writeCell } from './cell';
+import { cellStatusOf, isCellEmpty, writeCell, writeCellFailure } from './cell';
 import { outputKeyOf, resolveCell, type ResolveContext } from './resolve';
 
 /**
@@ -67,6 +68,13 @@ export async function planRun(
  * `dogi` columns, and what `runFormulaColumn` calls inline. Derives the table
  * from the lead, so callers only need (leadId, columnKey). Returns whether a
  * value was written.
+ *
+ * Failures are first-class for `dogi` columns: a miss (resolveCell returns no
+ * value) or a thrown error records `enrichmentConf[outputKey] = { status:
+ * 'failed', error, at }` with NO value in `data` (so the cell stays empty and
+ * re-runs naturally), and writes an `enrich_failed` audit row so the miss shows
+ * up in /activity. A thrown error is recorded then re-thrown, so the queue still
+ * sees the job as failed (retry/visibility) while the cell carries a reason.
  */
 export async function runCell(
   leadId: string,
@@ -78,12 +86,45 @@ export async function runCell(
   const column = await getColumn(lead.tableId, columnKey);
   if (!column) return false;
 
-  const resolved = await resolveCell(lead, column, ctx);
-  if (!resolved) return false;
+  const outKey = outputKeyOf(column);
+
+  let resolved;
+  try {
+    resolved = await resolveCell(lead, column, ctx);
+  } catch (err) {
+    // Only dogi cells carry per-cell failure state; other types just propagate.
+    if (column.type === 'dogi') {
+      const message = err instanceof Error ? err.message : String(err);
+      await recordCellFailure(leadId, outKey, message);
+    }
+    throw err;
+  }
+
+  if (!resolved) {
+    if (column.type === 'dogi') {
+      await recordCellFailure(leadId, outKey, 'No value found');
+    }
+    return false;
+  }
 
   // A Dogi whose output is mapped/created writes to that key; default = its own.
-  await writeCell(leadId, outputKeyOf(column), resolved);
+  await writeCell(leadId, outKey, resolved);
   return true;
+}
+
+/**
+ * Persist a per-cell failure marker AND an audit row for one dogi cell miss. No
+ * value is written to `data`, so the cell stays empty (re-runnable).
+ */
+async function recordCellFailure(leadId: string, columnKey: string, error: string): Promise<void> {
+  await writeCellFailure(leadId, columnKey, error);
+  await audit({
+    entity: 'lead',
+    entityId: leadId,
+    action: 'enrich_failed',
+    actor: 'system',
+    diff: { field: columnKey, error },
+  });
 }
 
 /**
@@ -121,6 +162,70 @@ export async function findReadyDependents(leadId: string, filledKey: string): Pr
     ready.push(outKey);
   }
   return ready;
+}
+
+/** The dogi columns defined for a lead's table (output key + the column). */
+export async function dogiColumnsForLead(leadId: string): Promise<{ column: Column; outputKey: string }[]> {
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+  if (!lead) return [];
+  const cols = await db.query.columns.findMany({
+    where: and(eq(columnsTable.tableId, lead.tableId), eq(columnsTable.type, 'dogi')),
+  });
+  return cols.map((column) => ({ column, outputKey: outputKeyOf(column) }));
+}
+
+/**
+ * Derive a lead's per-LEAD enrichment status from its per-CELL state — replacing
+ * the old last-writer-wins single field. We look only at the lead's dogi cells:
+ *
+ *   - 'failed'  → at least one dogi cell is failed AND none are still pending
+ *                 (a partial fill with another column still failing is a failure
+ *                 the user should see).
+ *   - 'done'    → there are attempted dogi cells and every one of them is filled.
+ *   - 'running' → some dogi cell is still pending/in-flight.
+ *   - null      → no dogi cells attempted yet; leave the status untouched.
+ *
+ * `pending` here means a dogi column exists whose cell is neither filled nor
+ * failed (never run / mid-run). Callers treating "running" should not overwrite a
+ * status they don't have a clear value for — hence the null return.
+ */
+export async function deriveLeadEnrichmentStatus(
+  leadId: string,
+): Promise<'done' | 'failed' | 'running' | null> {
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+  if (!lead) return null;
+
+  const dogiCols = await dogiColumnsForLead(leadId);
+  if (dogiCols.length === 0) return null; // nothing dogi-driven on this lead
+
+  let anyFailed = false;
+  let anyPending = false;
+  let anyAttempted = false;
+  let allFilled = true;
+
+  for (const { outputKey } of dogiCols) {
+    const status = cellStatusOf(lead, outputKey);
+    if (status === null) {
+      // Never run → still pending work for this lead.
+      anyPending = true;
+      allFilled = false;
+      continue;
+    }
+    anyAttempted = true;
+    if (status === 'failed') {
+      anyFailed = true;
+      allFilled = false;
+    } else if (status === 'filled') {
+      // counts toward allFilled
+    } else {
+      anyPending = true;
+      allFilled = false;
+    }
+  }
+
+  if (anyFailed && !anyPending) return 'failed';
+  if (anyAttempted && allFilled) return 'done';
+  return 'running';
 }
 
 /** Recompute a formula column inline for a set of leads (no jobs needed). */
