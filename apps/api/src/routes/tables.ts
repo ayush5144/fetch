@@ -741,7 +741,9 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
             key: step.primaryField,
             label: step.primaryLabel,
             type: 'manual',
-            config: {},
+            // Bone-created (manual) column — provenance so the grid can show
+            // "by Bone" (a dogi column self-identifies by type:'dogi').
+            config: { createdBy: 'bone' },
             position: -1 - primaryColsCreated,
           })
           .returning();

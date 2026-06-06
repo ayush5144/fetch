@@ -505,8 +505,22 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 - [x] Keep it minimal + consistent with existing tokens; no backend change beyond reusing `PATCH /tables/:id` (+ optionally a single-table read if cleaner).
   - Test: rename persists + reflects in Overview and the heading; table search filters the list; row search filters rows; web typecheck clean.
 
-### Round 8 — Column header: provenance + type (PLANNING — see below)
-- [ ] *(planned)* Show **who made/fills a column** (Dogi 🐕 / Bone 🦴 / formula ƒ / you) AND its **value type** (text/email/url…) without one icon hiding the other; hover the header reveals "Created by … · Type: …" + Edit name / Edit type / Edit config / Delete. Decision pending (badges vs hover vs both).
+### Round 8 — Column header: provenance + type on hover (hover-only)
+- [x] Backend: stamp `config.createdBy: 'bone'` on Bone-created **manual** columns (the source-rows primary column) so "by Bone" is real (dogi columns self-identify via `type:'dogi'`).
+- [ ] `columnProvenance(col)` → **"User" | "Dogi" | "Bone" | "Formula"** (`type==='dogi'`→Dogi; `type==='formula'`→Formula; `config.createdBy==='bone'`→Bone; else User).
+- [ ] **Hover the column header → a small tooltip** showing **"{Value type} · by {Provenance}"** (e.g. "Text · by Bone", "Email · by User"). Hover-only — no always-on badge.
+- [ ] The existing `⋯` column menu shows the same **"by {Provenance} · {Type}"** info line at the top, above the existing actions (Run / Edit name / Edit type / Edit config / Duplicate / Delete). Edit stays in the menu.
+- [ ] Keep it minimal + consistent; no new always-on icons. The value-type icon stays where it is.
+  - Test: a Bone-sourced Company column hover shows "Text · by Bone"; a dogi column shows "… · by Dogi"; a user column shows "by User"; web typecheck clean.
+
+### Round 9 — Run-the-whole-flow: a Bone agent as a re-runnable unit (PLANNING)
+Today a Bone run is one-shot: it builds rows + columns once, and you can only re-run a single column. Make a Bone flow a **reusable, re-runnable agent on the table**.
+- [ ] Persist the flow: when Bone builds, save its plan (goal + steps) as a **named agent attached to the table** (reuse the `agents` table; tag the columns it created with the flow id, e.g. `config.flowId`).
+- [ ] A single **"Run flow ▷"** control re-runs the whole flow — re-source N rows (optional, append) + re-fill all its columns in **dependency order** (reuse the dependency-ordered worker).
+- [ ] UI: surface the flow + its run control (a toolbar action, and/or a grouped header over the flow's columns); show progress + the per-run summary.
+- [ ] Reusable: drop a saved flow onto another table → it creates its columns + the run control.
+- [ ] Guardrails: cost estimate + confirm before a large re-run; sourced rows respect dedupe.
+  - *Decision pending:* a toolbar "Run [agent]" vs a dedicated "agent column" with the ▷ — UX call before building.
 
 ## Ship Gate (Clay/Dogi direction)
 
