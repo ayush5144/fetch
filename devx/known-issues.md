@@ -79,3 +79,20 @@
   path, so the **per-table dedupe policy** governs them (merge on email/domain,
   fill-empty). A re-pull merges instead of duplicating — same principle as the
   append-dedupe in #4.
+
+## Fixed — Vercel build (2026-06-06)
+
+8. **✅ Vercel build failed on backend TS errors.** Vercel was running the **root
+   `pnpm build`** (compiles the *whole* monorepo, incl. `apps/api` + `packages/*`),
+   so it tried to `tsc`-build the backend and hit Drizzle `.d.ts`/overload errors
+   that don't occur in a normal local build. But **`apps/web` is a pure HTTP
+   client** — it imports **zero `@fetch/*` packages** (only next/react), so the
+   deployed frontend never needs the backend compiled.
+   - **Fix:** added root `vercel.json` scoping the deploy to the web app only:
+     `installCommand: pnpm install --frozen-lockfile`,
+     `buildCommand: pnpm --filter @fetch/web run build`,
+     `outputDirectory: apps/web/.next`, `framework: nextjs`. The backend
+     (api/worker/mcp) runs elsewhere (self-host); it's not a Vercel target.
+   - Note: the full monorepo DOES build clean locally from a clean state
+     (`pnpm -r build`, dist gitignored, lockfile committed) — the failure was
+     Vercel compiling code it shouldn't, not a real code bug.
