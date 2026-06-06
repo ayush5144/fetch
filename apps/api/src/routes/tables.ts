@@ -666,8 +666,17 @@ tablesRoutes.post('/:id/doggo/run', async (c) => {
   const sourceSteps = steps.filter((s): s is SourceRowsStep => isSourceRowsStep(s));
   const columnSteps = steps.filter((s) => !isSourceRowsStep(s)) as DogiPlanStep[];
 
+  // Existing columns up front, so the primary-field column we materialize is
+  // idempotent (skip if present) and can be positioned left of enrichment ones.
+  const existing = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const byKey = new Map(existing.map((col) => [col.key, col]));
+
   // 1) Source rows first, so columns enqueue over the newly created leads too.
+  //    Each source-rows step also MATERIALIZES a manual column for its
+  //    primaryField, so the sourced values (written into lead.data) are visible
+  //    in the grid — left of the enrichment columns (R1.1).
   let rowsCreated = 0;
+  let primaryColsCreated = 0;
   for (const step of sourceSteps) {
     const { rows } = await sourceRows({
       description: step.description,
@@ -677,6 +686,36 @@ tablesRoutes.post('/:id/doggo/run', async (c) => {
       apiKey: body.apiKey,
     });
     if (rows.length === 0) continue;
+
+    // Materialize the primary column (idempotent by key). Negative position keeps
+    // it left of the enrichment columns, which createPlanColumns inserts after.
+    if (!byKey.get(step.primaryField)) {
+      try {
+        const [col] = await db
+          .insert(columnsTable)
+          .values({
+            tableId,
+            key: step.primaryField,
+            label: step.primaryLabel,
+            type: 'manual',
+            config: {},
+            position: -1 - primaryColsCreated,
+          })
+          .returning();
+        byKey.set(step.primaryField, col!);
+        primaryColsCreated++;
+        await audit({
+          entity: 'column',
+          entityId: col!.id,
+          action: 'create',
+          actor: 'doggo',
+          diff: { key: step.primaryField, sourcedPrimary: true },
+        });
+      } catch {
+        // A clash on key/label — the column already exists; reuse it.
+      }
+    }
+
     const [source] = await db
       .insert(sources)
       .values({ type: 'manual', raw: { doggo: step.description, count: step.count } })
@@ -690,8 +729,6 @@ tablesRoutes.post('/:id/doggo/run', async (c) => {
   }
 
   // 2) Create columns, reusing apply-plan's idempotent/audited logic.
-  const existing = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
-  const byKey = new Map(existing.map((col) => [col.key, col]));
   const before = byKey.size;
   const { rootKeys } = await createPlanColumns(tableId, columnSteps, byKey, brain);
   const columnsCreated = byKey.size - before;

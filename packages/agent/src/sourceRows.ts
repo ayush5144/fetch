@@ -49,7 +49,16 @@ with one entity per object. Example for fields ["company"] and "top 3 EV makers"
 [{"company":"Tesla"},{"company":"BYD"},{"company":"Rivian"}]
 
 Rules:
-- Return at most the requested count; fewer is fine if you cannot name that many.
+- Return EXACTLY the requested count of entities when you can; fewer ONLY if you
+  genuinely cannot name that many real ones. Do not pad with fakes.
+- Return DISTINCT, REAL-WORLD organizations/entities of the requested type — the
+  kind that has a single identifiable head (e.g. one CEO). For "AI companies":
+  OpenAI, Anthropic, Nvidia, Google/Alphabet, Microsoft — the actual companies.
+- DO NOT return divisions, product lines, sub-brands, or features as if they were
+  companies (NOT "Google AI", "Salesforce Einstein", "IBM Watson", "Microsoft
+  AI", "AWS"). Prefer the PARENT company (Alphabet/Google, not "Google AI").
+- No duplicates and no two entries that are the same organization under different
+  names (e.g. Google and Alphabet are ONE — pick one).
 - Use real, well-known entities; do not invent fake names.
 - Every object uses the SAME requested key(s). No extra keys, no nesting.
 Return the JSON array and nothing else.`;
@@ -72,28 +81,28 @@ function parseRowsJson(text: string): unknown[] | null {
   }
 }
 
+/** Minimal shape of the LLM handle we use (so the parse helper stays untyped). */
+type LLMHandle = NonNullable<ReturnType<typeof getLLM>>;
+
+/** A normalized dedupe key for one row — the lowercased values of its fields. */
+function rowKey(row: Record<string, unknown>, fields: string[]): string {
+  return fields.map((f) => String(row[f] ?? '').trim().toLowerCase()).join('|');
+}
+
 /**
- * Generate up to `count` entity rows from a description. Returns `{ rows: [] }`
- * (never throws) when no LLM is configured or the reply doesn't parse. Each row
- * is a plain object keyed by `fields` (default `['company']`); non-object or
- * empty elements are dropped, and the result is capped at the clamped count.
+ * Make ONE generation call and return the cleaned rows (objects keyed by the
+ * requested fields, empties dropped). Never throws — an LLM error or unparseable
+ * reply yields `[]`. `extra` carries an optional "you already returned these,
+ * give me N MORE distinct ones" instruction for the single re-prompt.
  */
-export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResult> {
-  const count = clampCount(input.count);
-  const fields = input.fields?.length ? input.fields : ['company'];
-  const log = logger.child({ description: input.description, count });
-
-  const opts: GetLLMOptions = {};
-  if (input.brain?.provider) opts.provider = input.brain.provider;
-  if (input.brain?.model) opts.model = input.brain.model;
-  if (input.brain?.keySource === 'byok' && input.apiKey) opts.apiKey = input.apiKey;
-
-  const llm = getLLM(opts);
-  if (!llm) {
-    log.info('sourceRows: no LLM configured');
-    return { rows: [], provider: 'none' };
-  }
-
+async function generateOnce(
+  llm: LLMHandle,
+  description: string,
+  fields: string[],
+  want: number,
+  extra?: string,
+  log?: ReturnType<typeof logger.child>,
+): Promise<Array<Record<string, unknown>>> {
   let text = '';
   try {
     const res = await llm.chat({
@@ -101,9 +110,9 @@ export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResu
         { role: 'system', content: SYSTEM },
         {
           role: 'user',
-          content: `Create ${count} entities for: ${input.description}\nFields per entity: ${JSON.stringify(
+          content: `Create ${want} entities for: ${description}\nFields per entity: ${JSON.stringify(
             fields,
-          )}`,
+          )}${extra ? `\n${extra}` : ''}`,
         },
       ],
       // NOTE: no `json: true`. Several providers' JSON mode forces a top-level
@@ -113,8 +122,8 @@ export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResu
     });
     text = res.text;
   } catch (err) {
-    log.warn('sourceRows: LLM call failed', { err: String(err) });
-    return { rows: [], provider: `${llm.provider}:${llm.model}` };
+    log?.warn('sourceRows: LLM call failed', { err: String(err) });
+    return [];
   }
 
   const raw = parseRowsJson(text) ?? [];
@@ -133,9 +142,62 @@ export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResu
       }
     }
     if (hasValue) rows.push(row);
-    if (rows.length >= count) break;
+  }
+  return rows;
+}
+
+/**
+ * Generate EXACTLY `count` entity rows from a description (count clamped to
+ * [1, MAX_SOURCE_ROWS]). Returns `{ rows: [] }` (never throws) when no LLM is
+ * configured or the first reply doesn't parse. Each row is a plain object keyed
+ * by `fields` (default `['company']`); non-object/empty elements are dropped.
+ *
+ * Exactness contract (R1.3): if the model returns MORE than `count`, the result
+ * is trimmed to `count`. If it returns FEWER, ONE re-prompt asks for just the
+ * remainder (de-duplicated against what we already have) and stops — no looping.
+ * If still short, the actual (shorter) array is returned so the caller can report
+ * the shortfall.
+ */
+export async function sourceRows(input: SourceRowsInput): Promise<SourceRowsResult> {
+  const count = clampCount(input.count);
+  const fields = input.fields?.length ? input.fields : ['company'];
+  const log = logger.child({ description: input.description, count });
+
+  const opts: GetLLMOptions = {};
+  if (input.brain?.provider) opts.provider = input.brain.provider;
+  if (input.brain?.model) opts.model = input.brain.model;
+  if (input.brain?.keySource === 'byok' && input.apiKey) opts.apiKey = input.apiKey;
+
+  const llm = getLLM(opts);
+  if (!llm) {
+    log.info('sourceRows: no LLM configured');
+    return { rows: [], provider: 'none' };
+  }
+  const provider = `${llm.provider}:${llm.model}`;
+
+  // First pass: ask for the full count, dedupe within the batch.
+  const seen = new Set<string>();
+  const rows: Array<Record<string, unknown>> = [];
+  const add = (batch: Array<Record<string, unknown>>): void => {
+    for (const row of batch) {
+      if (rows.length >= count) break;
+      const k = rowKey(row, fields);
+      if (k === '' || seen.has(k)) continue;
+      seen.add(k);
+      rows.push(row);
+    }
+  };
+
+  add(await generateOnce(llm, input.description, fields, count, undefined, log));
+
+  // Exactly ONE re-prompt for the remainder when short (no infinite loop).
+  if (rows.length < count) {
+    const remaining = count - rows.length;
+    const had = rows.map((r) => fields.map((f) => String(r[f] ?? '')).join(' / ')).join('; ');
+    const extra = `You already returned these — do NOT repeat them: ${had}.\nReturn ${remaining} MORE distinct entities of the same kind, as a JSON array.`;
+    add(await generateOnce(llm, input.description, fields, remaining, extra, log));
   }
 
-  log.info('sourceRows produced rows', { produced: rows.length });
-  return { rows, provider: `${llm.provider}:${llm.model}` };
+  log.info('sourceRows produced rows', { produced: rows.length, requested: count });
+  return { rows, provider };
 }

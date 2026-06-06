@@ -87,6 +87,22 @@ async function findMatch(
 }
 
 /**
+ * Resolve the policy's match keys (mirrors `ingestLead`) and find an existing
+ * lead the canonical would dedupe INTO, or undefined. Lets a caller know, before
+ * inserting, whether a row is genuinely new under the table's dedupe policy.
+ */
+async function findPolicyMatch(
+  canonical: CanonicalLead,
+  tableId: string,
+  policy: DedupePolicy,
+): Promise<Lead | undefined> {
+  const matchKeys =
+    policy.mode === 'company' ? ['email'] : policy.mode === 'columns' ? (policy.keys ?? []) : [];
+  if (matchKeys.length === 0) return undefined;
+  return findMatch(canonical, tableId, matchKeys);
+}
+
+/**
  * Find-or-create the account for a canonical lead, keyed on company domain
  * (the company dedupe key). Two leads at one company share one accounts row.
  * Returns null when no domain is known — the lead simply has no account yet.
@@ -413,14 +429,85 @@ function sourcedRowToCanonical(row: Record<string, unknown>): CanonicalLead {
 export interface SourcedRowsResult {
   created: number;
   merged: number;
+  /** Blank seed rows that were filled in place (counted toward `created`). */
+  filled: number;
+}
+
+/**
+ * A "blank" lead is the one a fresh table is seeded with: no email AND no
+ * meaningful `data` keys. It's a guaranteed-failing empty row, so when Doggo
+ * sources entities we fill it in place instead of leaving it as a dead first row.
+ */
+function isBlankLead(lead: Lead): boolean {
+  if (lead.email && lead.email.trim() !== '') return false;
+  if (lead.firstName || lead.lastName || lead.phone || lead.title || lead.linkedinUrl) return false;
+  const data = (lead.data as Record<string, unknown> | null) ?? {};
+  for (const v of Object.values(data)) {
+    if (v !== undefined && v !== null && String(v).trim() !== '') return false;
+  }
+  return true;
+}
+
+/**
+ * Find the table's oldest blank lead (no email, no meaningful data), or undefined.
+ * Used to reuse the seeded blank row instead of appending alongside it.
+ */
+async function findBlankLead(tableId: string): Promise<Lead | undefined> {
+  const rows = await db.query.leads.findMany({ where: eq(leads.tableId, tableId) });
+  const blanks = rows.filter(isBlankLead);
+  if (blanks.length === 0) return undefined;
+  return blanks.sort((a, b) => {
+    const at = a.createdAt.getTime();
+    const bt = b.createdAt.getTime();
+    if (at !== bt) return at - bt;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  })[0];
+}
+
+/**
+ * Write a sourced canonical row INTO an existing blank lead (the seeded row),
+ * keeping its position so it stays the first row. Goes through the same merge
+ * shape as ingest-time dedupe and writes an `update` audit. Returns the row.
+ */
+async function fillBlankLead(
+  blank: Lead,
+  canonical: CanonicalLead,
+  actor?: string,
+): Promise<Lead> {
+  const set = {
+    firstName: fillIfEmpty(blank.firstName, canonical.firstName),
+    lastName: fillIfEmpty(blank.lastName, canonical.lastName),
+    email: fillIfEmpty(blank.email, canonical.email),
+    phone: fillIfEmpty(blank.phone, canonical.phone),
+    title: fillIfEmpty(blank.title, canonical.title),
+    linkedinUrl: fillIfEmpty(blank.linkedinUrl, canonical.linkedinUrl),
+    // The blank row has no meaningful data — take the sourced object wholesale.
+    data: { ...((blank.data as Record<string, unknown> | null) ?? {}), ...(canonical.data ?? {}) },
+    // A blank row was 'no_email'; if we now have an email, it's unchecked again.
+    validationStatus: canonical.email ? 'unchecked' : blank.validationStatus,
+  };
+  const [updated] = await db.update(leads).set(set).where(eq(leads.id, blank.id)).returning();
+  await audit({
+    actor,
+    entity: 'lead',
+    entityId: blank.id,
+    action: 'update',
+    diff: diffOf(blank as unknown as Record<string, unknown>, set),
+  });
+  return updated!;
 }
 
 /**
  * Insert a batch of row-sourcing objects (from `sourceRows`) as leads in a
  * table, REUSING `ingestLead` so the table's dedupe policy applies — re-running
- * "top 10 companies" must NOT duplicate. Each insert is audited by `ingestLead`.
- * Newly created leads are appended after the current max position so they land
- * at the end of the grid. A bad row never sinks the batch.
+ * "top 10 companies" must NOT duplicate. Each insert is audited.
+ *
+ * Blank-row reuse (R1.2): a freshly created table holds ONE blank seed lead (no
+ * email, empty data). Rather than append N rows beside it (→ N+1 with a dead
+ * first row), the FIRST sourced entity is written INTO that blank row in place
+ * (keeping its position) and the rest are inserted. So a fresh table + source N
+ * yields exactly N rows, none blank. Genuinely-new rows still honor the table's
+ * dedupe policy. A bad row never sinks the batch.
  */
 export async function insertSourcedRows(
   rows: Array<Record<string, unknown>>,
@@ -428,6 +515,7 @@ export async function insertSourcedRows(
 ): Promise<SourcedRowsResult> {
   let created = 0;
   let merged = 0;
+  let filled = 0;
 
   // Start appending past the current max position so sourced rows trail the grid.
   const [posRow] = await db
@@ -436,9 +524,29 @@ export async function insertSourcedRows(
     .where(eq(leads.tableId, ctx.tableId));
   let nextPos = (posRow?.maxPos ?? -1) + 1;
 
+  // Reuse the seeded blank row for the first genuinely-new sourced entity. The
+  // policy decides whether a row dedupes into an existing one BEFORE we touch the
+  // blank, so a dedupe match still wins (the blank is only for genuinely-new rows).
+  const policy = ctx.dedupe ?? (await policyForTable(ctx.tableId));
+  let blank = await findBlankLead(ctx.tableId);
+
   for (const row of rows) {
     try {
       const canonical = sourcedRowToCanonical(row);
+
+      // Blank-fill path: a new row (no dedupe match) and a blank seed row exists.
+      if (blank) {
+        const match = await findPolicyMatch(canonical, ctx.tableId, policy);
+        if (!match) {
+          await fillBlankLead(blank, canonical, ctx.actor);
+          blank = undefined; // only one blank row to reuse
+          created++;
+          filled++;
+          continue;
+        }
+      }
+
+      // Normal path: ingestLead applies the dedupe policy (merge or create).
       const { lead, created: isNew } = await ingestLead(canonical, {
         sourceId: ctx.sourceId,
         tableId: ctx.tableId,
@@ -455,7 +563,7 @@ export async function insertSourcedRows(
       continue; // one malformed row never sinks the batch
     }
   }
-  return { created, merged };
+  return { created, merged, filled };
 }
 
 /** Count leads at a domain — used by the account view and dedupe assertions. */

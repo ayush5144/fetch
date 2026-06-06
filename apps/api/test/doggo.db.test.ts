@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { eq } from 'drizzle-orm';
 import { DEFAULT_TABLE_ID, columns, db, jobs, leads, tables } from '@fetch/db';
 import { truncateAll } from '@fetch/db/testing';
-import { startQueues, stopQueues } from '@fetch/core';
+import { seedBlankLead, startQueues, stopQueues } from '@fetch/core';
 
 /**
  * Phase I — Doggo (autonomous orchestrator + row-sourcing). We mock the planner
@@ -122,6 +122,51 @@ describe('POST /tables/:id/doggo/run', () => {
     const enrichJobs = await db.query.jobs.findMany({ where: eq(jobs.type, 'enrich') });
     expect(enrichJobs).toHaveLength(3);
     expect((enrichJobs[0]!.payload as any).columnKey).toBe('ceo');
+  });
+
+  it('materializes a manual column for the sourced primaryField, left of enrichment (R1.1)', async () => {
+    sourceRows.mockResolvedValue({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+
+    await post(`/tables/${T}/doggo/run`, { plan });
+
+    const cols = await db.query.columns.findMany({ where: eq(columns.tableId, T) });
+    const company = cols.find((cc) => cc.key === 'company');
+    const ceo = cols.find((cc) => cc.key === 'ceo')!;
+    // A manual `company` column now exists with the planned label...
+    expect(company).toBeTruthy();
+    expect(company!.type).toBe('manual');
+    expect(company!.label).toBe('Company');
+    // ...and it sorts LEFT of the ceo enrichment column.
+    expect(company!.position).toBeLessThan(ceo.position);
+
+    // The sourced values are addressable under that column's key.
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(rows.map((r) => (r.data as any).company).sort()).toEqual(['BYD', 'Tesla']);
+  });
+
+  it('reuses the seeded blank row → exactly N rows, none blank (R1.2)', async () => {
+    // A fresh table has ONE blank seed row.
+    await seedBlankLead(T);
+    const seeded = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(seeded).toHaveLength(1);
+
+    sourceRows.mockResolvedValue({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }, { company: 'Rivian' }],
+      provider: 'openai:test',
+    });
+
+    const res = await post(`/tables/${T}/doggo/run`, { plan });
+    expect((await res.json()).rowsCreated).toBe(3);
+
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    // Exactly 3 (the blank was filled, not appended-to) and none is blank.
+    expect(rows).toHaveLength(3);
+    const companies = rows.map((r) => (r.data as any).company).sort();
+    expect(companies).toEqual(['BYD', 'Rivian', 'Tesla']);
+    for (const r of rows) expect((r.data as any).company).toBeTruthy();
   });
 
   it('re-running with a `by columns` dedupe policy does NOT duplicate the rows', async () => {
