@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DogiConfigForm, type DogiConfig } from './DogiConfigForm';
+import { DogiConfigForm, type DogiConfig, type SearchAvailability } from './DogiConfigForm';
 import { agentsApi, type ValueType, type FillMethod, type Column, type SavedAgent } from '@/lib/api';
 
 /**
@@ -41,6 +41,29 @@ const TYPES: TypeDef[] = [
   { id: 'manual',  label: 'Manual',    icon: '✎',  blurb: 'You type it',    group: 'fill', fillMethod: 'manual',  valueType: 'text' },
 ];
 
+/**
+ * Optional quick-pick presets for common data-ready fields. Picking one
+ * pre-fills the column name + value type (and snake_cases the key via the same
+ * derivation as a typed name). Purely a convenience — the user can ignore them
+ * and type a fully custom name/type instead. Email → email, LinkedIn URL → url,
+ * everything else → text (Phone is text, holding a phone number).
+ */
+interface FieldTemplate {
+  label: string;
+  /** Which TYPES value type to select. */
+  valueType: ValueType;
+}
+const FIELD_TEMPLATES: FieldTemplate[] = [
+  { label: 'Name',         valueType: 'text' },
+  { label: 'First name',   valueType: 'text' },
+  { label: 'Last name',    valueType: 'text' },
+  { label: 'Email',        valueType: 'email' },
+  { label: 'Phone',        valueType: 'text' },
+  { label: 'Title',        valueType: 'text' },
+  { label: 'LinkedIn URL', valueType: 'url' },
+  { label: 'Company',      valueType: 'text' },
+];
+
 const DEFAULT_DOGI_CONFIG: DogiConfig = {
   instruction: '',
   reads: [],
@@ -60,6 +83,8 @@ interface Props {
   anchorRect: DOMRect;
   tableId: string;
   availableColumns?: { key: string; label: string }[];
+  /** Web-search / scrape backend availability, passed to the Dogi config form. */
+  searchAvailability?: SearchAvailability;
   /** If provided, the popover is in edit mode and pre-populates from this column. */
   editColumn?: Column;
   onSubmit: (payload: ColumnPayload) => Promise<void>;
@@ -98,6 +123,7 @@ export function AddColumnPopover({
   onEdit,
   onClose,
   availableColumns = [],
+  searchAvailability,
   editColumn,
 }: Props) {
   const isEdit = Boolean(editColumn);
@@ -255,6 +281,33 @@ export function AddColumnPopover({
             )}
           </div>
 
+          {/* Common-field quick-picks (optional convenience — create mode only) */}
+          {!isEdit && (
+            <div style={{ marginBottom: 12 }}>
+              <div className="type-picker-section">Common fields (optional)</div>
+              <div className="field-templates">
+                {FIELD_TEMPLATES.map((t) => (
+                  <button
+                    key={t.label}
+                    type="button"
+                    className="field-template-chip"
+                    title={`Pre-fill name + ${t.valueType} type`}
+                    onClick={() => {
+                      setLabel(t.label);
+                      setErr(null);
+                      const td = TYPES.find(
+                        (x) => x.group === 'value' && x.valueType === t.valueType,
+                      );
+                      if (td) setSelectedType(td);
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Type picker (hidden in edit mode — type can't change) */}
           {!isEdit && (
             <div style={{ marginBottom: 8 }}>
@@ -370,6 +423,7 @@ export function AddColumnPopover({
                 value={dogiConfig}
                 onChange={setDogiConfig}
                 availableColumns={availableColumns}
+                availability={searchAvailability}
                 apiKey={apiKey}
                 onApiKeyChange={setApiKey}
                 onSaveAsAgent={async (agentName) => {

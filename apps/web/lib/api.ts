@@ -421,10 +421,42 @@ export interface KeyStatus {
   smtp: boolean;
 }
 
+/**
+ * Which web-search / scrape backends the server has configured. All booleans.
+ *   openserp             → self-hosted OpenSERP web search (`OPENSERP_URL` set)
+ *   serper               → hosted Serper web search (`SERPER_API_KEY` set)
+ *   firecrawl_selfhosted → self-hosted Firecrawl scrape (`FIRECRAWL_API_URL` set)
+ *   firecrawl            → hosted Firecrawl scrape (`FIRECRAWL_API_KEY` set)
+ * Web search is available if `openserp || serper`; scrape if
+ * `firecrawl_selfhosted || firecrawl`. The `web:native` Dogi source needs none.
+ */
+export interface SearchStatus {
+  openserp: boolean;
+  serper: boolean;
+  firecrawl_selfhosted: boolean;
+  firecrawl: boolean;
+}
+
+/** Whether the external web-search and scrape backends can run right now. */
+export interface SearchAvailability {
+  webSearch: boolean;
+  scrape: boolean;
+}
+
+/** Derive availability from the raw `search` block. Safe with a missing block. */
+export function searchAvailability(search?: SearchStatus): SearchAvailability {
+  return {
+    webSearch: Boolean(search?.openserp || search?.serper),
+    scrape: Boolean(search?.firecrawl_selfhosted || search?.firecrawl),
+  };
+}
+
 /** Response from `GET /settings`. */
 export interface Settings {
   llm: { provider: string; model: string };
   keys: KeyStatus;
+  /** Web-search / scrape backend availability (Round 3). May be absent on older servers. */
+  search?: SearchStatus;
 }
 
 export const settingsApi = {

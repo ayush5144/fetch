@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, estimateCost, tablesApi, leadsApi, isCellFailed, type Column, type Lead, type CellJob } from '@/lib/api';
+import { api, estimateCost, tablesApi, leadsApi, settingsApi, searchAvailability, isCellFailed, type Column, type Lead, type CellJob, type SearchAvailability } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
 import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
@@ -199,6 +199,19 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
     }
     return map;
   });
+
+  // Web-search / scrape backend availability — fetched once so the add-column
+  // Dogi form can gate the web/scrape source toggles. Non-blocking: if /settings
+  // fails we leave it undefined and gate nothing.
+  const [searchAvail, setSearchAvail] = useState<SearchAvailability | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    settingsApi
+      .get()
+      .then((s) => { if (alive) setSearchAvail(searchAvailability(s.search)); })
+      .catch(() => { /* non-blocking — leave undefined, nothing gets gated */ });
+    return () => { alive = false; };
+  }, []);
 
   // Sync widths when columns change
   useEffect(() => {
@@ -958,6 +971,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           anchorRect={addColAnchor}
           tableId={tableId}
           availableColumns={availableColumns}
+          searchAvailability={searchAvail}
           onSubmit={submitNewColumn}
           onClose={() => { setAddColAnchor(null); insertPositionRef.current = null; }}
         />
@@ -1047,6 +1061,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           anchorRect={editColPopover.rect}
           tableId={tableId}
           availableColumns={availableColumns.filter((c) => c.key !== editColPopover.col.key)}
+          searchAvailability={searchAvail}
           editColumn={editColPopover.col}
           onSubmit={submitNewColumn}
           onEdit={editColumnConfig}

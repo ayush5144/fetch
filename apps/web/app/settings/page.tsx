@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Topbar } from '@/components/Topbar';
-import { settingsApi, type KeyStatus, type Settings } from '@/lib/api';
+import { settingsApi, searchAvailability, type KeyStatus, type Settings } from '@/lib/api';
 
 /**
  * Read-only key-status view. Keys live in the server's `.env` (self-hosted);
@@ -147,6 +147,8 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            <SearchCard search={data.search} />
+
             {SECTIONS.map((section) => (
               <div className="card" key={section.title}>
                 <div className="card-head">
@@ -169,6 +171,58 @@ export default function SettingsPage() {
         ) : null}
       </div>
     </>
+  );
+}
+
+/**
+ * Web search & scrape availability — derived from the `search` block. Shows
+ * which backend (if any) each agent tool would use, so an operator can see at a
+ * glance whether a Dogi's web-search / scrape sources can actually run.
+ */
+function SearchCard({ search }: { search?: Settings['search'] }) {
+  const { webSearch, scrape } = searchAvailability(search);
+
+  // Pick the most specific backend label, preferring self-hosted.
+  const webLabel = search?.openserp
+    ? 'Self-hosted (OpenSERP)'
+    : search?.serper
+      ? 'Serper'
+      : 'Not configured';
+  const scrapeLabel = search?.firecrawl_selfhosted
+    ? 'Self-hosted (Firecrawl)'
+    : search?.firecrawl
+      ? 'Hosted Firecrawl'
+      : 'Not configured';
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>Web search &amp; scrape</h3>
+        <span className="muted" style={{ fontSize: 12 }}>
+          The self-hostable backends behind a Dogi&apos;s web-search and scrape sources.
+        </span>
+      </div>
+      <div className="card-pad" style={{ paddingTop: 0, paddingBottom: 4 }}>
+        <div className="settings-row">
+          <span className="settings-row-label">
+            Web search
+            <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>{webLabel}</span>
+          </span>
+          <KeyPill configured={webSearch} />
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">
+            Scrape
+            <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>{scrapeLabel}</span>
+          </span>
+          <KeyPill configured={scrape} />
+        </div>
+        <p className="settings-note" style={{ marginTop: 8 }}>
+          When a backend isn&apos;t running, a Dogi&apos;s matching source is disabled in its
+          config. The AI&apos;s own <strong>native</strong> web search needs no backend and stays available.
+        </p>
+      </div>
+    </div>
   );
 }
 

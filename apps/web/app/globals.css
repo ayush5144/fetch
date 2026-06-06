@@ -1248,6 +1248,36 @@ table.grid-tbl {
   margin-bottom: 4px;
 }
 
+/* Common-field quick-pick chips (add-column popover) */
+.field-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.field-template-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+}
+.field-template-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* Inline hint next to a gated Dogi source toggle */
+.dogi-source-hint {
+  font-size: 11px;
+  color: var(--amber);
+}
+
 /* ── Column header context menu ─────────────────────────────────────────────*/
 .col-menu-backdrop {
   position: fixed;

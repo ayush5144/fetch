@@ -153,10 +153,29 @@ function hasLLM(sources: DogiSource[]): boolean {
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Backend availability for the web-search (external) and scrape sources, from
+ * `GET /settings.search`. When a backend is down the matching toggle is gated
+ * (disabled + an inline hint). Optional — when omitted, nothing is gated
+ * (non-blocking: never assume unavailable if we couldn't fetch settings).
+ */
+export interface SearchAvailability {
+  /** External web search (OpenSERP / Serper) is reachable. */
+  webSearch: boolean;
+  /** Scrape backend (self-hosted / hosted Firecrawl) is reachable. */
+  scrape: boolean;
+}
+
 interface Props {
   value: DogiConfig;
   onChange: (v: DogiConfig) => void;
   availableColumns?: { key: string; label: string }[];
+  /**
+   * Web-search / scrape backend availability. When the relevant backend is
+   * unavailable the matching toggle is disabled with an inline hint. `web:native`
+   * is never gated (it needs no backend). Omit to leave everything enabled.
+   */
+  availability?: SearchAvailability;
   /** BYOK key — kept in parent state, never persisted */
   apiKey?: string;
   onApiKeyChange?: (key: string) => void;
@@ -173,10 +192,14 @@ export function DogiConfigForm({
   value,
   onChange,
   availableColumns = [],
+  availability,
   apiKey = '',
   onApiKeyChange,
   onSaveAsAgent,
 }: Props) {
+  // When availability is unknown (undefined), don't gate anything — non-blocking.
+  const webSearchDown = availability ? !availability.webSearch : false;
+  const scrapeDown = availability ? !availability.scrape : false;
   // Phase E — save-as-agent state
   const [savingAgent, setSavingAgent] = useState(false);
   const [saveAgentName, setSaveAgentName] = useState('');
@@ -469,31 +492,70 @@ export function DogiConfigForm({
                   />
                   Native (AI&apos;s own search)
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--ink-soft)', fontWeight: 400 }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    cursor: webSearchDown ? 'not-allowed' : 'pointer',
+                    fontSize: 12,
+                    color: webSearchDown ? 'var(--muted)' : 'var(--ink-soft)',
+                    fontWeight: 400,
+                  }}
+                >
                   <input
                     type="radio"
                     name="dogi-web-via"
                     checked={webSource.via === 'external'}
+                    disabled={webSearchDown}
                     onChange={() => setWebVia('external')}
-                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    style={{ accentColor: 'var(--accent)', cursor: webSearchDown ? 'not-allowed' : 'pointer' }}
                   />
-                  External (Serper)
+                  External (OpenSERP / Serper)
                 </label>
+              </div>
+            )}
+            {webSource && webSource.via === 'external' && webSearchDown && (
+              <div className="dogi-source-hint" style={{ marginLeft: 22 }}>
+                Web-search backend not running — see Settings. Native search still works.
               </div>
             )}
           </div>
 
           {/* Scrape */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 400, fontSize: 13, color: 'var(--ink-soft)' }}>
-            <input
-              type="checkbox"
-              checked={hasScrape(value.sources)}
-              onChange={(e) => toggleScrape(e.target.checked)}
-              style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: 14, height: 14 }}
-            />
-            <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>Scrape</strong>
-            <span className="muted" style={{ fontSize: 12 }}>— read a specific page (Firecrawl)</span>
-          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: scrapeDown && !hasScrape(value.sources) ? 'not-allowed' : 'pointer',
+                fontWeight: 400,
+                fontSize: 13,
+                color: scrapeDown ? 'var(--muted)' : 'var(--ink-soft)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={hasScrape(value.sources)}
+                disabled={scrapeDown && !hasScrape(value.sources)}
+                onChange={(e) => toggleScrape(e.target.checked)}
+                style={{
+                  accentColor: 'var(--accent)',
+                  cursor: scrapeDown && !hasScrape(value.sources) ? 'not-allowed' : 'pointer',
+                  width: 14,
+                  height: 14,
+                }}
+              />
+              <strong style={{ color: scrapeDown ? 'var(--muted)' : 'var(--ink)', fontWeight: 600 }}>Scrape</strong>
+              <span className="muted" style={{ fontSize: 12 }}>— read a specific page (Firecrawl)</span>
+            </label>
+            {scrapeDown && (
+              <div className="dogi-source-hint" style={{ marginLeft: 22 }}>
+                Scrape backend not running — see Settings.
+              </div>
+            )}
+          </div>
 
           {/* LLM */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 400, fontSize: 13, color: 'var(--ink-soft)' }}>
