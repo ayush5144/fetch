@@ -163,6 +163,10 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
   // ── "Just do it": skip the review pause and run immediately after planning.
   const [justDoIt, setJustDoIt] = useState(false);
 
+  // ── "Build and run" (default ON): when OFF we build only — rows + columns are
+  // created but no enrichment runs are enqueued (`/bone/run { run:false }`).
+  const [buildAndRun, setBuildAndRun] = useState(true);
+
   // ── Bone settings (collapsible, persisted to table.settings.bone)
   const [showSettings, setShowSettings] = useState(false);
   const [boneSettings, setBoneSettings] = useState<BoneSettings>({});
@@ -257,7 +261,7 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
     setRunning(true);
     setRunError(null);
     try {
-      const res = await boneApi.run(tableId, { goal: p.goal, steps: stepsToRun });
+      const res = await boneApi.run(tableId, { goal: p.goal, steps: stepsToRun }, { run: buildAndRun });
       // Refresh the grid in the background, then show the summary so the user
       // sees what was created and that enrichment is now running.
       setResult(res);
@@ -351,10 +355,15 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
       >
         <div className="bone-banner bone-banner-green" style={{ lineHeight: 1.6 }}>
           <strong>{created}</strong>
-          {result.enqueued > 0 && (
+          {result.enqueued > 0 ? (
             <div style={{ marginTop: 6, color: 'var(--ink-soft)' }}>
               Enrichment is running — any cells that fail will show a{' '}
               <span aria-hidden>⚠</span> you can re-run.
+            </div>
+          ) : (
+            <div style={{ marginTop: 6, color: 'var(--ink-soft)' }}>
+              Not run yet — nothing was enqueued. Use a column's{' '}
+              <strong>▷ Run</strong> or the flow to fill the cells when you're ready.
             </div>
           )}
         </div>
@@ -459,7 +468,8 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
     const parts: string[] = [];
     if (sourceCount > 0) parts.push(`${sourceCount} source`);
     if (columnCount > 0) parts.push(`${columnCount} column${columnCount !== 1 ? 's' : ''}`);
-    return parts.length > 0 ? `Approve & build (${parts.join(', ')})` : 'Approve & build';
+    const verb = buildAndRun ? 'Approve & build' : 'Build only';
+    return parts.length > 0 ? `${verb} (${parts.join(', ')})` : verb;
   }
 
   return (
@@ -475,7 +485,19 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
           >
             ← Back
           </button>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label
+              className="bone-toggle"
+              title="On: build the columns/rows and run them now. Off: build only — create everything but don't run yet."
+            >
+              <input
+                type="checkbox"
+                checked={buildAndRun}
+                disabled={running}
+                onChange={(e) => setBuildAndRun(e.target.checked)}
+              />
+              <span>Build and run</span>
+            </label>
             <button className="btn btn-ghost btn-sm" onClick={onClose}>
               Cancel
             </button>
@@ -484,7 +506,7 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
               disabled={steps.length === 0 || running}
               onClick={handleApprove}
             >
-              {running ? 'Building…' : approveLabel()}
+              {running ? (buildAndRun ? 'Building…' : 'Creating…') : approveLabel()}
             </button>
           </div>
         </div>

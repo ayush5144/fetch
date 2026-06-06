@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, estimateCost, tablesApi, leadsApi, settingsApi, searchAvailability, isCellFailed, type Column, type Lead, type CellJob, type SearchAvailability, type Table, type Flow } from '@/lib/api';
+import { api, estimateCost, tablesApi, leadsApi, settingsApi, searchAvailability, isCellFailed, type Column, type Lead, type CellJob, type SearchAvailability, type Table, type Flow, type FlowRunMode } from '@/lib/api';
 import { AddColumnPopover } from './AddColumnPopover';
 import type { ColumnPayload } from './AddColumnPopover';
 import { ColumnMenu } from './ColumnMenu';
@@ -173,6 +173,29 @@ function valueTypeLabel(col: Column): string {
   return 'Text';
 }
 
+/**
+ * Build the toolbar result line for a flow run, reflecting the mode + the ACTUAL
+ * rows added (the backend dedupes new rows, so it may add fewer than requested).
+ */
+function flowResultMessage(
+  mode: FlowRunMode,
+  res: { rowsCreated: number; columnsRun: number; enqueued: number },
+): string {
+  const rows = (n: number) => `${n} row${n !== 1 ? 's' : ''}`;
+  const cells = (n: number) => `${n} cell${n !== 1 ? 's' : ''}`;
+  if (mode === 'addNew') {
+    return res.rowsCreated > 0
+      ? `Added ${rows(res.rowsCreated)}; ${cells(res.enqueued)} queued`
+      : 'No new rows added — they were already in the table.';
+  }
+  if (mode === 'replace') {
+    return `Replacing all values — ${cells(res.enqueued)} queued`;
+  }
+  // retry
+  const added = res.rowsCreated > 0 ? ` (added ${rows(res.rowsCreated)})` : '';
+  return `Retrying empty & failed cells${added} — ${cells(res.enqueued)} queued`;
+}
+
 /** Validate a raw string value against a column's valueType. Returns error or null. */
 function validateValue(raw: string, col: Column): string | null {
   const vt = col.config?.valueType;
@@ -218,6 +241,47 @@ function getCellValue(lead: Lead, col: Column): unknown {
   if (col.key === 'email') return lead.email;
   if (col.key === 'title') return lead.title;
   return lead.data?.[col.key];
+}
+
+/**
+ * Render any cell value as readable text — never `[object Object]`.
+ *
+ * A Dogi can store a structured value (e.g. `contact_info` =
+ * `{email, phone, address}` or an array of such). Scalars render as-is; arrays
+ * join with ` · `; objects render as a `key: value` list. Pure and defensive.
+ */
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  // Compactly stringify a nested non-scalar value (object/array inside an entry).
+  const scalar = (val: unknown): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return '';
+    }
+  };
+
+  if (Array.isArray(value)) {
+    return value.map((item) => formatCellValue(item)).join(' · ');
+  }
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return '';
+    return entries.map(([k, val]) => `${k}: ${scalar(val)}`).join(' · ');
+  }
+
+  try {
+    return String(value);
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -314,12 +378,14 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
   const [dedupeBusy, setDedupeBusy] = useState(false);
   const [dedupeMsg, setDedupeMsg] = useState<string | null>(null);
 
-  // ── Run flow (Round 9) — pick a flow, confirm modal, result message
+  // ── Run flow (Round 9 → Round 12 sub-modes) — pick a flow, confirm, result
+  // Three sub-modes map to the backend `mode`:
+  //   replace → re-run & overwrite every flow cell (rows-to-add not relevant).
+  //   retry   → re-run empty + failed cells (optionally add new rows).
+  //   addNew  → source N new (deduped) rows and run only those.
   const [flowMenu, setFlowMenu] = useState<DOMRect | null>(null);
   const [flowConfirm, setFlowConfirm] = useState<Flow | null>(null);
-  // Append = fill empty/failed + (optionally) add rows (force:false, default
-  // rows=10). Replace = re-run & overwrite existing cells (force:true, rows=0).
-  const [flowMode, setFlowMode] = useState<'append' | 'replace'>('append');
+  const [flowMode, setFlowMode] = useState<FlowRunMode>('retry');
   const [flowMore, setFlowMore] = useState('10');
   const [flowBusy, setFlowBusy] = useState(false);
   const [flowMsg, setFlowMsg] = useState<string | null>(null);
@@ -345,6 +411,27 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
 
   // ── Add row (blank — the user fills this table's own columns inline)
   const [addLeadBusy, setAddLeadBusy] = useState(false);
+
+  // ── Optimistic "queued" state (issue #7) ──────────────────────────────────
+  // When a run is triggered (run cell / column / flow / auto-run) we mark the
+  // affected cells "queued" immediately, before the next /cell-jobs poll, so the
+  // spinner + toolbar pill never lag the click. Each entry is keyed `lead|col`
+  // and carries the time it was added; it's cleared as soon as the real poll
+  // reports that cell (any status), the cell has a value, or it ages out (so a
+  // run that never produced a job can't leave a stuck spinner).
+  const [optimistic, setOptimistic] = useState<Record<string, number>>({});
+  const cellKey = (leadId: string, columnKey: string) => `${leadId}|${columnKey}`;
+
+  /** Mark one or many (leadId × columnKey) cells optimistically queued now. */
+  const markQueued = useCallback((leadIds: string[], columnKeys: string[]) => {
+    if (leadIds.length === 0 || columnKeys.length === 0) return;
+    const now = Date.now();
+    setOptimistic((prev) => {
+      const next = { ...prev };
+      for (const lid of leadIds) for (const ck of columnKeys) next[cellKey(lid, ck)] = now;
+      return next;
+    });
+  }, []);
 
   // ── Column widths (local override, persisted on drag end)
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
@@ -378,6 +465,45 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
       return next;
     });
   }, [columns]);
+
+  // Prune optimistic-queued entries once they're resolved: the live poll now
+  // reports the cell (any status), the cell has a value, the cell recorded a
+  // failure, or the entry has aged past the safety TTL (so a click that never
+  // produced a job can't leave a stuck "queued"). Runs whenever jobs/leads
+  // change (i.e. each poll) plus a slow timer to catch the TTL with no poll.
+  const OPTIMISTIC_TTL_MS = 20000;
+  useEffect(() => {
+    if (Object.keys(optimistic).length === 0) return;
+    const leadById = new Map(leads.map((l) => [l.id, l]));
+    const jobKeys = new Set(jobs.map((j) => cellKey(j.leadId, j.columnKey)));
+    const colByKey = new Map(columns.map((c) => [c.key, c]));
+    const prune = () => {
+      const now = Date.now();
+      setOptimistic((prev) => {
+        let changed = false;
+        const next: Record<string, number> = {};
+        for (const [k, at] of Object.entries(prev)) {
+          if (jobKeys.has(k)) { changed = true; continue; } // real job took over
+          if (now - at > OPTIMISTIC_TTL_MS) { changed = true; continue; } // aged out
+          const [lid, ck] = k.split('|');
+          const lead = leadById.get(lid);
+          const col = colByKey.get(ck);
+          if (lead && col) {
+            const v = getCellValue(lead, col);
+            const resolved =
+              (v !== undefined && v !== null && v !== '') ||
+              isCellFailed(lead.enrichmentConf?.[col.key]);
+            if (resolved) { changed = true; continue; } // cell filled / failed
+          }
+          next[k] = at;
+        }
+        return changed ? next : prev;
+      });
+    };
+    prune();
+    const id = setInterval(prune, 4000);
+    return () => clearInterval(id);
+  }, [optimistic, jobs, leads, columns]);
 
   // Focus edit input when entering edit mode
   useEffect(() => {
@@ -415,7 +541,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
   function startEdit(lead: Lead, col: Column) {
     const v = getCellValue(lead, col);
     setEditCell({ leadId: lead.id, key: col.key });
-    setEditValue(v !== null && v !== undefined ? String(v) : '');
+    setEditValue(formatCellValue(v));
     setEditError(null);
   }
 
@@ -447,8 +573,10 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
         const entered = window.prompt(`Enter your ${col.config?.brain?.provider ?? 'AI'} API key for "${col.label}" (session only, never saved):`);
         if (!entered) return;
         setByokKeys((prev) => ({ ...prev, [col.id]: entered }));
+        markQueued([lead.id], [col.key]);
         await api.post(`/leads/${lead.id}/run/${col.key}`, { apiKey: entered });
       } else {
+        markQueued([lead.id], [col.key]);
         await api.post(`/leads/${lead.id}/run/${col.key}`, apiKey ? { apiKey } : undefined);
       }
       setTimeout(onRefreshLeads, 500);
@@ -459,6 +587,14 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
 
   async function runColumn(col: Column) {
     const leadIds = selected.size > 0 ? [...selected] : leads.map((l) => l.id);
+    // Optimistically queue the empty cells this run will fill (run-only-if-empty),
+    // so the spinner + toolbar pill show immediately. The poll then takes over.
+    const emptyLeadIds = leadIds.filter((id) => {
+      const lead = leads.find((l) => l.id === id);
+      if (!lead) return false;
+      const v = getCellValue(lead, col);
+      return v === undefined || v === null || v === '';
+    });
     try {
       const isByok = col.config?.brain?.keySource === 'byok';
       const apiKey = isByok ? byokKeys[col.id] : undefined;
@@ -467,8 +603,10 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
         const entered = window.prompt(`Enter your ${col.config?.brain?.provider ?? 'AI'} API key for "${col.label}" (session only, never saved):`);
         if (!entered) return;
         setByokKeys((prev) => ({ ...prev, [col.id]: entered }));
+        markQueued(emptyLeadIds, [col.key]);
         await api.post(`/tables/${tableId}/columns/${col.key}/run`, { leadIds, apiKey: entered });
       } else {
+        markQueued(emptyLeadIds, [col.key]);
         await api.post(`/tables/${tableId}/columns/${col.key}/run`, { leadIds, ...(apiKey ? { apiKey } : {}) });
       }
       setTimeout(onRefreshLeads, 500);
@@ -584,47 +722,54 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
   // ── Run flow (Round 9) ──────────────────────────────────────────────────────
 
   /**
-   * Open the confirm modal for a flow. Defaults to Append mode with "Rows to
-   * add" = 10 (Append is about filling empties and growing the table).
+   * Open the confirm modal for a flow. Defaults to Retry mode (fill empty +
+   * failed) with "Rows to add" = 10.
    */
   function openFlowConfirm(flow: Flow) {
     setFlowMsg(null);
     setFlowMenu(null);
-    setFlowMode('append');
+    setFlowMode('retry');
     setFlowMore('10');
     setFlowConfirm(flow);
   }
 
   /** Switch run mode and reset the row-count default for that mode. */
-  function setFlowModeWithDefault(mode: 'append' | 'replace') {
+  function setFlowModeWithDefault(mode: FlowRunMode) {
     setFlowMode(mode);
-    // Append grows the table (default 10); Replace is about existing data (0).
-    setFlowMore(mode === 'append' ? '10' : '0');
+    // Replace is purely about existing cells (no rows). addNew is all about new
+    // rows (default 10). Retry fills empties and can optionally grow (default 10).
+    setFlowMore(mode === 'replace' ? '0' : '10');
   }
 
   /**
-   * Run the confirmed flow in the chosen mode:
-   * - Append → fill empty/failed cells (+ source `sourceMore` new rows), force:false.
-   * - Replace → re-run & overwrite existing cells, force:true.
-   * `sourceMore` is clamped 0–50; 0 means "add no rows".
+   * Run the confirmed flow in the chosen mode. Maps the selection to the backend
+   * `{ mode, sourceMore }`:
+   * - replace → re-run & overwrite all flow cells (rows-to-add ignored).
+   * - retry   → re-run empty + failed cells, optionally source N new rows.
+   * - addNew  → source N new (deduped) rows and run only those.
+   * `sourceMore` is clamped 0–50; for addNew it's the row count to source. The
+   * result message reflects the mode + the ACTUAL rows added (the backend dedupes,
+   * so it may add fewer than requested).
    */
   async function confirmRunFlow() {
     if (!flowConfirm || flowBusy) return;
-    const force = flowMode === 'replace';
     const n = Math.max(0, Math.min(50, Math.floor(Number(flowMore) || 0)));
+    // Replace never sources rows; retry/addNew pass the count through.
+    const sourceMore = flowMode === 'replace' ? undefined : n || undefined;
     setFlowBusy(true);
+    // Optimistically queue the flow's columns so the spinners show immediately.
+    // For replace/retry that's all rows; addNew only touches the new rows (which
+    // don't exist yet) so we don't mark anything optimistically there.
+    if (flowMode !== 'addNew') {
+      markQueued(leads.map((l) => l.id), flowConfirm.columnKeys);
+    }
     try {
       const res = await tablesApi.runFlow(tableId, flowConfirm.id, {
-        sourceMore: n || undefined,
-        force,
+        mode: flowMode,
+        sourceMore,
       });
       setFlowConfirm(null);
-      const verb = force ? 'Replaced' : 'Appended';
-      setFlowMsg(
-        `${verb} ${res.columnsRun} column${res.columnsRun !== 1 ? 's' : ''}; ` +
-          `added ${res.rowsCreated} row${res.rowsCreated !== 1 ? 's' : ''}; ` +
-          `${res.enqueued} cell${res.enqueued !== 1 ? 's' : ''} queued`,
-      );
+      setFlowMsg(flowResultMessage(flowMode, res));
       setTimeout(() => setFlowMsg(null), 6000);
       onRefreshLeads();
       onRefreshColumns();
@@ -662,8 +807,23 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
       body.position = insertPositionRef.current;
       insertPositionRef.current = null;
     }
-    await api.post(`/tables/${tableId}/columns`, body);
+    const res = await api.post<{ column: Column }>(`/tables/${tableId}/columns`, body);
     onRefreshColumns();
+    // Auto-run a newly-created Dogi column (Clay-style): if it's runnable, has an
+    // instruction, AND the user kept "Run now" on, enqueue a run across the
+    // table. Dogi-only — `manual` has no run and `formula` auto-computes.
+    // Run-only-if-empty (no `force`), so it never clobbers existing values. When
+    // "Run now" is off (Build only) the column is created empty and not run.
+    // If the BYOK prompt is cancelled the column still exists, just unfilled.
+    const created = res?.column;
+    if (
+      payload.runNow !== false &&
+      created &&
+      created.type === 'dogi' &&
+      created.config?.instruction?.trim()
+    ) {
+      void runColumn(created);
+    }
   }
 
   async function editColumnConfig(
@@ -724,6 +884,8 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
     const leadIds = [...selected];
     if (leadIds.length === 0) return;
     setBulkBusy('run');
+    // Optimistically queue every runnable column for the selected rows.
+    markQueued(leadIds, columns.filter(isRunnable).map((c) => c.key));
     try {
       await api.post(`/tables/${tableId}/run`, { leadIds });
       setTimeout(() => {
@@ -742,6 +904,8 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
    * filled ones too). Cells re-enter running → filled/failed after a refresh.
    */
   async function rerunRow(leadId: string, force?: boolean) {
+    // Optimistically queue every Dogi column for this row.
+    markQueued([leadId], columns.filter(isRunnable).map((c) => c.key));
     try {
       await leadsApi.rerunRow(leadId, force);
       setTimeout(onRefreshLeads, 500);
@@ -770,6 +934,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
     const leadIds = [...selected];
     if (leadIds.length === 0) return;
     setBulkBusy('rerun');
+    markQueued(leadIds, columns.filter(isRunnable).map((c) => c.key));
     try {
       await Promise.all(leadIds.map((id) => leadsApi.rerunRow(id)));
       setTimeout(() => {
@@ -914,9 +1079,26 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
 
   const availableColumns = columns.map((c) => ({ key: c.key, label: c.label }));
 
+  // Merge the live polled jobs with optimistic "queued" entries so a freshly
+  // triggered cell shows queued immediately (issue #7). A polled job for the
+  // same cell always wins (its real status overrides the optimistic queued);
+  // optimistic-only cells render as synthetic `queued` jobs. This is the single
+  // source of truth for cell state, the spinner, and the toolbar pill.
+  const effectiveJobs: CellJob[] = (() => {
+    const polledKeys = new Set(jobs.map((j) => cellKey(j.leadId, j.columnKey)));
+    const synthetic: CellJob[] = [];
+    for (const k of Object.keys(optimistic)) {
+      if (polledKeys.has(k)) continue;
+      const [leadId, columnKey] = k.split('|');
+      synthetic.push({ leadId, columnKey, status: 'queued' });
+    }
+    return synthetic.length > 0 ? [...jobs, ...synthetic] : jobs;
+  })();
+
   // How many cell jobs for this table are in flight (running or queued). Drives
-  // the "Dogi working…" toolbar indicator. Errors aren't "in flight".
-  const inFlightCount = jobs.filter(
+  // the "Dogi working…" toolbar indicator. Errors aren't "in flight". Uses the
+  // merged jobs so the pill appears the instant a run is triggered.
+  const inFlightCount = effectiveJobs.filter(
     (j) => j.status === 'running' || j.status === 'queued',
   ).length;
 
@@ -1234,7 +1416,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                     isFlowCol(rc) ? (
                       <FlowCell
                         key={`flow-${rc.__flow.id}`}
-                        flowState={flowRowState(lead, rc.__flow, columns, jobs)}
+                        flowState={flowRowState(lead, rc.__flow, columns, effectiveJobs)}
                         onRun={() => runFlowForRow(lead, rc.__flow)}
                       />
                     ) : (
@@ -1242,7 +1424,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                       key={rc.id}
                       lead={lead}
                       col={rc}
-                      jobs={jobs}
+                      jobs={effectiveJobs}
                       editing={editCell?.leadId === lead.id && editCell?.key === rc.key}
                       editValue={editValue}
                       editError={editError}
@@ -1493,11 +1675,11 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
         </>
       )}
 
-      {/* Run-flow confirm modal — choose Append vs Replace + rows to add */}
+      {/* Run-flow confirm modal — choose a sub-mode + rows to add */}
       {flowConfirm && (
         <Modal
           title="Run flow"
-          maxWidth={460}
+          maxWidth={480}
           onClose={() => { if (!flowBusy) setFlowConfirm(null); }}
           footer={
             <>
@@ -1505,7 +1687,13 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                 Cancel
               </button>
               <button className="btn btn-accent" disabled={flowBusy} onClick={confirmRunFlow}>
-                {flowBusy ? 'Running…' : flowMode === 'replace' ? 'Replace' : 'Append'}
+                {flowBusy
+                  ? 'Running…'
+                  : flowMode === 'replace'
+                    ? 'Replace'
+                    : flowMode === 'addNew'
+                      ? 'Add rows'
+                      : 'Retry'}
               </button>
             </>
           }
@@ -1516,19 +1704,6 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
           </p>
 
           <div className="flow-mode" role="radiogroup" aria-label="Run mode">
-            <label className={`flow-mode-opt${flowMode === 'append' ? ' is-active' : ''}`}>
-              <input
-                type="radio"
-                name="flow-mode"
-                checked={flowMode === 'append'}
-                disabled={flowBusy}
-                onChange={() => setFlowModeWithDefault('append')}
-              />
-              <span className="flow-mode-body">
-                <span className="flow-mode-title">Append</span>
-                <span className="flow-mode-help">Fill empty &amp; failed cells, and optionally add new rows.</span>
-              </span>
-            </label>
             <label className={`flow-mode-opt${flowMode === 'replace' ? ' is-active' : ''}`}>
               <input
                 type="radio"
@@ -1539,25 +1714,56 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
               />
               <span className="flow-mode-body">
                 <span className="flow-mode-title">Replace</span>
-                <span className="flow-mode-help">Re-run every cell and overwrite existing values.</span>
+                <span className="flow-mode-help">Re-run every cell and overwrite all existing values.</span>
+              </span>
+            </label>
+            <label className={`flow-mode-opt${flowMode === 'retry' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="flow-mode"
+                checked={flowMode === 'retry'}
+                disabled={flowBusy}
+                onChange={() => setFlowModeWithDefault('retry')}
+              />
+              <span className="flow-mode-body">
+                <span className="flow-mode-title">Append → Retry failed &amp; empty</span>
+                <span className="flow-mode-help">Re-run only cells that are empty or failed; optionally add new rows.</span>
+              </span>
+            </label>
+            <label className={`flow-mode-opt${flowMode === 'addNew' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="flow-mode"
+                checked={flowMode === 'addNew'}
+                disabled={flowBusy}
+                onChange={() => setFlowModeWithDefault('addNew')}
+              />
+              <span className="flow-mode-body">
+                <span className="flow-mode-title">Append → Only add new rows</span>
+                <span className="flow-mode-help">Source new (deduped) rows and run the flow only on them; existing cells untouched.</span>
               </span>
             </label>
           </div>
 
-          <label className="flow-more-field">
-            <span className="flow-more-label">Rows to add</span>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              max={50}
-              value={flowMore}
-              disabled={flowBusy}
-              onChange={(e) => setFlowMore(e.target.value)}
-              style={{ width: 96 }}
-            />
-            <span className="muted" style={{ fontSize: 12 }}>0 = just fill (max 50)</span>
-          </label>
+          {/* Rows to add — relevant to retry (optional) and addNew (required). */}
+          {flowMode !== 'replace' && (
+            <label className="flow-more-field">
+              <span className="flow-more-label">Rows to add</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={50}
+                value={flowMore}
+                disabled={flowBusy}
+                onChange={(e) => setFlowMore(e.target.value)}
+                style={{ width: 96 }}
+              />
+              <span className="muted" style={{ fontSize: 12 }}>
+                {flowMode === 'addNew' ? 'how many new rows (max 50)' : '0 = just fill (max 50)'}
+              </span>
+            </label>
+          )}
         </Modal>
       )}
 
@@ -1740,7 +1946,7 @@ function GridCell({
   }
 
   if (state === 'filled' || (value !== undefined && value !== null && value !== '')) {
-    const displayValue = String(value);
+    const displayValue = formatCellValue(value);
     const isStrong = col.key === 'firstName' || col.key === 'lastName' || col.key === 'company';
     const isMono = col.key === 'email' || vt === 'email' || vt === 'url';
     // A filled cell's conf carries provenance (legacy convention: confidence/

@@ -64,6 +64,12 @@ export interface ColumnPayload {
   label: string;
   type: string;
   config: Record<string, unknown>;
+  /**
+   * For a dogi column: whether to auto-run the new column immediately after
+   * creating it (default true). Manual/formula columns never run, so this is
+   * undefined for them. The grid gates its auto-run on this flag.
+   */
+  runNow?: boolean;
 }
 
 interface Props {
@@ -129,6 +135,9 @@ export function AddColumnPopover({
     editColumn?.type === 'dogi' ? dogiConfigFromColumn(editColumn) : DEFAULT_DOGI_CONFIG,
   );
   const [apiKey, setApiKey] = useState('');
+  // For a new dogi column: run it immediately after creating (default ON). When
+  // off, the column is created empty and the grid does NOT auto-run it.
+  const [runNow, setRunNow] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -198,7 +207,14 @@ export function AddColumnPopover({
           selectedType.id === 'dogi' ? 'dogi' :
           selectedType.id === 'formula' ? 'formula' :
           'manual';
-        await onSubmit({ key, label, type: backendType, config });
+        await onSubmit({
+          key,
+          label,
+          type: backendType,
+          config,
+          // Only a dogi column can auto-run; gate it on the "Run now" toggle.
+          runNow: backendType === 'dogi' ? runNow : undefined,
+        });
       }
       onClose();
     } catch (e) {
@@ -428,6 +444,23 @@ export function AddColumnPopover({
                   setSavedAgents((prev) => [...prev, res.agent]);
                 }}
               />
+
+              {/* Build-only vs Build-and-run — create mode only. On: run the new
+                  column across the table now. Off: create it empty, run later. */}
+              {!isEdit && (
+                <label
+                  className="bone-toggle"
+                  style={{ marginTop: 12 }}
+                  title="On: fill this column now. Off: just create it — run it later with ▷ Run."
+                >
+                  <input
+                    type="checkbox"
+                    checked={runNow}
+                    onChange={(e) => setRunNow(e.target.checked)}
+                  />
+                  <span>Run now</span>
+                </label>
+              )}
             </div>
           )}
 

@@ -256,19 +256,23 @@ export const tablesApi = {
 
   /**
    * Re-run a saved Bone flow — `POST /tables/:id/flow/:flowId/run`.
-   * `sourceMore` optionally adds N more sourced rows (clamp 0–50 in the UI);
-   * `force` re-runs cells that already have a value.
+   * `mode` chooses the run behavior:
+   *   - `replace` → re-run & overwrite every flow cell for every row.
+   *   - `retry`   → re-run only empty + failed cells (optionally `sourceMore` rows).
+   *   - `addNew`  → source `sourceMore` new (deduped) rows and run the flow only
+   *                 on those new rows; existing cells are untouched.
+   * `sourceMore` is the number of new rows to source (clamp 0–50 in the UI).
    */
   runFlow: (
     tableId: string,
     flowId: string,
-    opts?: { sourceMore?: number; force?: boolean },
+    opts: { mode: FlowRunMode; sourceMore?: number },
   ) =>
-    api.post<FlowRunResult>(
-      `/tables/${tableId}/flow/${flowId}/run`,
-      opts && (opts.sourceMore !== undefined || opts.force !== undefined) ? opts : undefined,
-    ),
+    api.post<FlowRunResult>(`/tables/${tableId}/flow/${flowId}/run`, opts),
 };
+
+/** Run-flow sub-mode (Round 12). */
+export type FlowRunMode = 'replace' | 'retry' | 'addNew';
 
 /** Result of re-running a Bone flow. */
 export interface FlowRunResult {
@@ -399,9 +403,19 @@ export const boneApi = {
   plan: (tableId: string, goal: string, apiKey?: string) =>
     api.post<BonePlanResponse>(`/tables/${tableId}/bone/plan`, { goal, apiKey }),
 
-  /** Run an approved Bone plan — sources rows, builds columns, enqueues runs. */
-  run: (tableId: string, plan: BonePlan, apiKey?: string) =>
-    api.post<BoneRunResponse>(`/tables/${tableId}/bone/run`, { plan, apiKey }),
+  /**
+   * Run an approved Bone plan — sources rows, builds columns, enqueues runs.
+   * `opts.run` (default `true`) controls whether enrichment runs are enqueued:
+   *   - `true`  → build rows + columns AND enqueue every run (as today).
+   *   - `false` → **Build only**: create rows + columns but enqueue nothing
+   *               (response `enqueued: 0`).
+   */
+  run: (tableId: string, plan: BonePlan, opts?: { run?: boolean; apiKey?: string }) =>
+    api.post<BoneRunResponse>(`/tables/${tableId}/bone/run`, {
+      plan,
+      apiKey: opts?.apiKey,
+      run: opts?.run,
+    }),
 };
 
 // ── Per-table Bone settings (persisted in table.settings.bone) ──────────────
