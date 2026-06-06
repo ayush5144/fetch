@@ -527,6 +527,11 @@ Decided: **toolbar "Run flow ▷"** (default) + an **optional dedicated agent co
 - [x] Guardrails: confirm + (later) cost estimate before a large re-run; sourced rows respect the table's dedupe.
   - Test: a Bone run persists a flow + tags columns; `flow/:id/run` re-sources + re-fills in order; the toolbar control lists the affected columns; the settings toggle persists.
 
+### Round 10 — Cell object rendering, replace/append, real agent column
+- [ ] **Fix `[object Object]` cells.** A Dogi can return a structured value (object/array, e.g. Contact Info). The grid does `String(value)` → `[object Object]`. Add `formatCellValue(value)`: primitives as-is; arrays/objects rendered **readably** (prefer string values / `k: v · k: v`; fallback compact JSON) — never `[object Object]`. Use at display + when starting an edit.
+- [ ] **Replace vs append on flow re-run.** The run-flow confirm modal offers **Append** (add N rows + fill empty, `force:false`) vs **Replace** (re-run & overwrite, `force:true`); wire `force` into `tablesApi.runFlow` (backend already supports it). Keep the "add N rows" input.
+- [ ] **Agent column = a real grid column (Clay-style).** Replace the "FLOW AGENTS" chip with an actual column representing the flow, positioned **immediately before the flow's first data column**. Header: flow name + 🐕 + a ▷ that runs the whole flow. Cells: per-row flow **status** derived from the flow's data columns (done ✓ / failed ⚠ / running / per-row ▷). Synthetic column — must not break editing/selection/other columns. Shown only when `settings.agentColumn` is on.
+
 ## Ship Gate (Clay/Dogi direction)
 
 - [ ] Create a table, add leads, and operate it like a spreadsheet (inline +column, edit any field, drag/resize/reorder, add row)
