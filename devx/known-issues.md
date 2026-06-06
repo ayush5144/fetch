@@ -30,7 +30,7 @@
 
 ## Open — being built (Round 12)
 
-4. **🔴 Append re-runs DUPLICATE rows** *(the big flag)*
+4. **✅ Append re-runs DUPLICATE rows** *(the big flag)*
    - Confirmed live (spas table: `Oceanic Spa` ×2, `The Nature Spa` ×2).
    - **Cause:** flow append calls `sourceRows(description, count)` — re-generates
      the **same** top-N list with no knowledge of existing rows — then
@@ -40,7 +40,7 @@
      on the primary field regardless of table policy; **skip** if no genuinely-new
      rows are found. Report how many were actually added.
 
-5. **🟡 No "Build only" — Bone always runs on confirm**
+5. **✅ Build only — Bone always runs on confirm**
    - Confirm both creates rows+columns AND enqueues every run (columns × rows =
      expensive).
    - **Fix (decided):** a **"Build and run"** toggle (default ON) beside the
@@ -49,7 +49,7 @@
    - Same for a **single added Dogi column**: a Build-only vs Build-and-run choice
      (frontend gates the auto-run).
 
-6. **🟡 Append needs sub-modes**
+6. **✅ Append sub-modes**
    - **Decided modes** on the run-flow modal:
      - **Replace** — re-run & overwrite existing cells (`force`).
      - **Append → Retry** — re-run **failed + empty** cells (run-only-if-empty),
@@ -57,7 +57,7 @@
      - **Append → Only add new rows** — source N **new** (deduped) rows and run the
        flow **only on the new rows**; don't touch existing cells.
 
-7. **🟡 Running / queued state not always shown**
+7. **✅ Running / queued state not always shown**
    - Sometimes a cell that's running/queued doesn't visibly show it. The cell
      state is derived from polled `/cell-jobs` + lead data; the indicator is
      unreliable.

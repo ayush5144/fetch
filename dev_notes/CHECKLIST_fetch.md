@@ -543,20 +543,20 @@ Bone vs Dogi (locked understanding): **Dogi = one column** (fills one field/row,
 
 ### Round 12 — Run-control + append-dedupe + status reliability (issues from the 2026-06-06 review; see `devx/known-issues.md`)
 **Backend (12a):**
-- [ ] **Append dedupe (fix duplicates).** When a flow re-sources rows: pass the table's existing **primary-field** values to `sourceRows` so it generates only NEW entities ("don't repeat these"), AND dedupe new-vs-existing on the primary field (case-insensitive) regardless of table policy; **skip** rows that already exist. Return the count actually added (so the UI can say "added 3 of 10 — rest already present").
-- [ ] **`/bone/run` `run` flag.** Body gains `run?: boolean` (default `true`). When `false` = **Build only**: create rows + columns (as today) but **do NOT enqueue** any runs. Response `enqueued:0`.
-- [ ] **`/tables/:id/flow/:flowId/run` modes.** Body `{ mode: 'replace' | 'retry' | 'addNew', sourceMore?, apiKey? }`:
+- [x] **Append dedupe (fix duplicates).** When a flow re-sources rows: pass the table's existing **primary-field** values to `sourceRows` so it generates only NEW entities ("don't repeat these"), AND dedupe new-vs-existing on the primary field (case-insensitive) regardless of table policy; **skip** rows that already exist. Return the count actually added (so the UI can say "added 3 of 10 — rest already present").
+- [x] **`/bone/run` `run` flag.** Body gains `run?: boolean` (default `true`). When `false` = **Build only**: create rows + columns (as today) but **do NOT enqueue** any runs. Response `enqueued:0`.
+- [x] **`/tables/:id/flow/:flowId/run` modes.** Body `{ mode: 'replace' | 'retry' | 'addNew', sourceMore?, apiKey? }`:
   - `replace` → re-run & overwrite all flow columns for all rows (force-clear then enqueue).
   - `retry` → enqueue **empty + failed** cells only (run-only-if-empty), optionally `sourceMore` new (deduped) rows.
   - `addNew` → source `sourceMore` **new (deduped)** rows and enqueue the flow's columns **only for those new rows**; don't touch existing cells.
-- [ ] Tests for: append dedupe (no dup; skip when none new), build-only (no enqueue), the three flow modes.
+- [x] Tests for: append dedupe (no dup; skip when none new), build-only (no enqueue), the three flow modes.
 
 **Frontend (12b):**
-- [ ] **Bone confirm: "Build and run" toggle** (default ON) beside Approve; OFF = **Build only** → calls `/bone/run` with `run:false` (columns + rows created, nothing runs).
-- [ ] **Single added Dogi column: Build-only vs Build-and-run** choice in the add-column popover; gates the auto-run (Build-and-run default).
-- [ ] **Run-flow modal sub-modes:** Replace · Append→Retry (failed+empty) · Append→Only-add-new-rows, + the rows-to-add count (default 10); map to the backend `mode`. Result message reflects mode + actual rows added.
-- [ ] **Running/queued reliability:** the cell must reliably show **queued/running** (optimistic "queued" on trigger; robust job→cell mapping; toolbar "working… N" + per-cell spinner stay in sync; clears on done/failed).
-- [ ] Commit the live-but-uncommitted fixes (`formatCellValue` object render + added-column auto-run) as part of this round.
+- [x] **Bone confirm: "Build and run" toggle** (default ON) beside Approve; OFF = **Build only** → calls `/bone/run` with `run:false` (columns + rows created, nothing runs).
+- [x] **Single added Dogi column: Build-only vs Build-and-run** choice in the add-column popover; gates the auto-run (Build-and-run default).
+- [x] **Run-flow modal sub-modes:** Replace · Append→Retry (failed+empty) · Append→Only-add-new-rows, + the rows-to-add count (default 10); map to the backend `mode`. Result message reflects mode + actual rows added.
+- [x] **Running/queued reliability:** the cell must reliably show **queued/running** (optimistic "queued" on trigger; robust job→cell mapping; toolbar "working… N" + per-cell spinner stay in sync; clears on done/failed).
+- [x] Commit the live-but-uncommitted fixes (`formatCellValue` object render + added-column auto-run) as part of this round.
 
 ## Ship Gate (Clay/Dogi direction)
 
