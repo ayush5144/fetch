@@ -138,6 +138,11 @@ It's a per-Dogi toggle either way — nothing is forced.
 
 Web-search / scrape keys: see [providers-and-keys.md](./providers-and-keys.md).
 
+> **Default brain:** when a Dogi pins no `brain`, the OpenAI default is now
+> **`gpt-4o-mini-search-preview`** — a search-capable model that returns real,
+> cited web results out of the box (overridable per-Dogi or via env `LLM_MODEL`).
+> See [providers-and-keys.md §1b](./providers-and-keys.md#default-search).
+
 ---
 
 ## 5. Output mapping — fill, **create**, or map to existing

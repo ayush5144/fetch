@@ -3,6 +3,11 @@
 How Dogi's brain is configured: which LLM providers we support, the two
 web-search backends, and how keys flow (BYOK **and** env).
 
+> **Default brain:** the OpenAI default is now **`gpt-4o-mini-search-preview`** —
+> a search-capable model, so Dogi/Bone get real, cited web results out of the
+> box. It stays fully overridable (per-Dogi brain picker / env `LLM_MODEL`). See
+> [§1b](#default-search).
+
 ---
 
 ## 1. Four providers from the start
@@ -26,6 +31,58 @@ We extend `packages/llm`:
 OpenClay's `app/api/enrich/route.ts` is a clean reference for each provider's
 request shape (and shows the native-search tool payloads). See the license note
 below before copying literal code.
+
+---
+
+## 1b. The default brain is search-capable (built-in web search) {#default-search}
+
+**The OpenAI default is now `gpt-4o-mini-search-preview`** (set in
+`DEFAULT_MODELS`, `packages/llm/src/index.ts`, and `.env.example`'s
+`LLM_MODEL`). This is a deliberate change from the old `gpt-4o-mini`, which can
+only answer from **training recall** — for a current fact ("the current CEO of
+Hero MotoCorp") it replied *"I cannot provide real-time information… my training
+cut-off is October 2023."* The search-preview model, by contrast, has **web
+search built into Chat Completions** and returns a correct, **cited** answer out
+of the box. Verified live (2026-06-06):
+
+> *"As of June 2026, Harshavardhan Chitale is the Chief Executive Officer of Hero
+> MotoCorp, having assumed the role on January 5, 2026."* — with a
+> `heromotocorp.com` press-release source URL, returned through
+> `getLLM({provider:'openai'})` with the env default.
+
+**What "built-in web search" means.** A `*-search-preview` model
+(`gpt-4o-search-preview`, `gpt-4o-mini-search-preview`) searches the web itself
+inside a normal `chat()` call and attaches `url_citation` annotations — no extra
+key, no Serper, no scrape loop. In our client this is automatic: `openai.ts`
+detects a search-preview model by name and (a) **omits `temperature`** (these
+models 400 on it) and (b) sends `web_search_options: {}` to enable search,
+**instead of** forwarding function tools. Every non-search model
+(`gpt-4.1`, `gpt-4o-mini`, …) is sent exactly as before — temperature included,
+function tools forwarded — so nothing else changes. This is distinct from
+`webSearch:'native'`, which routes to the **Responses API** `web_search` tool;
+that path is unchanged and still works for any Responses-capable model.
+
+**How this differs from the self-hosted OpenSERP/Firecrawl path.** Built-in
+search is the **model's own** search (OpenAI's index, one call, costs more per
+call). The self-hosted **OpenSERP + Firecrawl** loop
+(`web:external` + `scrape`, see [search-and-scrape.md](./search-and-scrape.md))
+is **our** search/scrape — no paid search key, fully self-hostable, and it can
+**read** (scrape) a specific page, which built-in search does not. Built-in
+search is the cheap, zero-setup default; the self-hosted loop is for self-hosters
+who want their own search budget and page-reading.
+
+**Cost note.** Search-preview models cost **more** than plain `-mini` (you pay
+for the search step on top of tokens). For high-volume runs where the column
+doesn't need live web data, pick a cheaper non-search model per Dogi.
+
+**How to change the model** (the default stays fully user-overridable):
+- **Per-Dogi brain picker** — each Dogi's `brain` (`provider` + `model` + key)
+  overrides the default for that column. This is the primary, per-column switch.
+- **Bone / global default** — the env `LLM_MODEL` (and `LLM_PROVIDER`) sets the
+  fallback brain when a Dogi pins no model. Set
+  `LLM_MODEL=gpt-4.1` (or `claude-opus-4-8`, etc.) to change it globally.
+- Any valid model id works in either place; only `*-search-preview` ids get the
+  built-in-search request shaping above.
 
 ---
 

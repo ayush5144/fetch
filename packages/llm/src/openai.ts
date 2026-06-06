@@ -1,6 +1,19 @@
 import type { ChatOptions, LLMClient, LLMMessage, LLMResponse, ToolCall } from './types';
 
 /**
+ * OpenAI's `*-search-preview` models (e.g. `gpt-4o-search-preview`,
+ * `gpt-4o-mini-search-preview`) have web search built into Chat Completions and
+ * return real, cited results. They are stricter about params: they REJECT
+ * `temperature` (400 "Model incompatible request argument supplied: temperature")
+ * and take search tuning via `web_search_options` instead of a `tools` array. We
+ * branch on the model name so these defaults work, while every other model keeps
+ * its exact prior behaviour.
+ */
+export function isSearchPreviewModel(model: string): boolean {
+  return model.includes('search-preview');
+}
+
+/**
  * Map one provider-agnostic message to OpenAI's Chat Completions shape. Shared
  * by OpenAI and Grok (xAI's Chat Completions is OpenAI-compatible).
  *
@@ -51,15 +64,21 @@ export class OpenAIClient implements LLMClient {
 
   private async chatCompletions(opts: ChatOptions): Promise<LLMResponse> {
     const messages = opts.messages.map(toChatMessage);
+    const searchPreview = isSearchPreviewModel(this.model);
 
     const body: Record<string, unknown> = {
       model: this.model,
       messages,
-      temperature: opts.temperature ?? 0.2,
       max_tokens: opts.maxTokens ?? 1024,
     };
+    // search-preview models reject `temperature`; everything else keeps the 0.2 default.
+    if (!searchPreview) body.temperature = opts.temperature ?? 0.2;
     if (opts.json) body.response_format = { type: 'json_object' };
-    if (opts.tools?.length) {
+    if (searchPreview) {
+      // Web search is built into this model; enable it via web_search_options
+      // (an empty object turns it on with defaults) rather than a function tool.
+      body.web_search_options = {};
+    } else if (opts.tools?.length) {
       body.tools = opts.tools.map((t) => ({
         type: 'function',
         function: { name: t.name, description: t.description, parameters: t.inputSchema },

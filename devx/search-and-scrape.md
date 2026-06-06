@@ -7,6 +7,27 @@
 > This doc is the architecture for giving Dogi real web data *without* depending
 > on a paid API, in keeping with "open-source, self-hostable Clay."
 
+## 0. Two ways to get web data (which is used when)
+
+There are now **two** independent ways Dogi gets web data:
+
+- **(a) A search-capable model (native, default).** The default brain is OpenAI's
+  `gpt-4o-mini-search-preview`, which has **web search built into the model** — it
+  searches and returns cited results in one `chat()` call, no extra key. This is
+  what fills cells **by default** (and the per-Dogi `web:native` source). Cheap to
+  set up, costs more per call, **can't scrape** a specific page. See
+  [providers-and-keys.md §1b](./providers-and-keys.md#default-search).
+- **(b) The self-hosted OpenSERP + Firecrawl loop (this doc).** When a Dogi
+  enables `web:external` + `scrape`, the research loop calls **our** search
+  (OpenSERP/Serper) for result URLs and **Firecrawl** to read a page — no paid
+  search key, fully self-hostable, and it can **read** pages the model's built-in
+  search can't. This is the path for self-hosters who want their own search budget
+  and page-reading, or for hard facts behind a specific URL.
+
+Rule of thumb: (a) is the zero-setup default for "answer a current-fact
+question"; (b) is for self-hosted search and for scraping a known page. They
+compose — a Dogi can use either or both.
+
 ## 1. Why
 
 Dogi enrichment is unreliable for hard facts (a specific CEO's LinkedIn URL)
@@ -31,7 +52,7 @@ The agent already has the right shape — two pluggable tools behind two source 
 |---|---|---|---|
 | `{type:'web', via:'external'}` | `packages/agent/src/tools/webSearch.ts` | Serper (`SERPER_API_KEY`) | add an **OpenSERP backend**; pick by env |
 | `{type:'scrape', via:'firecrawl'}` | `packages/agent/src/tools/scrapeUrl.ts` | hosted Firecrawl (`FIRECRAWL_API_KEY`) | allow a **self-hosted Firecrawl URL** |
-| `{type:'web', via:'native'}` | the LLM provider's own search | (OpenAI Responses) | unchanged — stays as a cheap default |
+| `{type:'web', via:'native'}` | the LLM provider's own search | (OpenAI Responses, or a built-in-search model) | unchanged — and the **default brain is now `gpt-4o-mini-search-preview`**, which searches the web itself in a normal `chat()` call (§0a) |
 
 So the **research loop is already built** (`runLLMSource` with tools, `maxSteps`):
 the LLM calls `web_search` (→ OpenSERP) to get result URLs, then `scrape_url`

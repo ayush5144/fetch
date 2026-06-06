@@ -44,6 +44,10 @@ export const PRICING: Record<LLMProvider, ProviderPricing> = {
       'gpt-5': { inputPerM: 1.25, outputPerM: 10 },
       'gpt-4.1': { inputPerM: 2, outputPerM: 8 },
       'gpt-4.1-mini': { inputPerM: 0.4, outputPerM: 1.6 },
+      // Default brain: built-in web search (per-call search cost is on top, via
+      // webSearchPer1k). Token prices match gpt-4o-mini.
+      'gpt-4o-mini-search-preview': { inputPerM: 0.15, outputPerM: 0.6 },
+      'gpt-4o-search-preview': { inputPerM: 2.5, outputPerM: 10 },
     },
   },
   gemini: {

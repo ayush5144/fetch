@@ -17,7 +17,10 @@ export type LLMProvider = 'anthropic' | 'openai' | 'gemini' | 'grok';
 /** Default model per provider when the caller doesn't pin one. */
 const DEFAULT_MODELS: Record<LLMProvider, string> = {
   anthropic: 'claude-opus-4-8',
-  openai: 'gpt-4.1',
+  // A *-search-preview model has OpenAI's web search built into Chat Completions,
+  // so Dogi/Bone get real, cited web results out of the box (plain gpt-4o-mini
+  // can only answer from training recall). Verified live (see openai.ts).
+  openai: 'gpt-4o-mini-search-preview',
   gemini: 'gemini-2.5-flash',
   grok: 'grok-4',
 };
