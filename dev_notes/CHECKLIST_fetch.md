@@ -534,9 +534,9 @@ Decided: **toolbar "Run flow ▷"** (default) + an **optional dedicated agent co
 
 ### Round 11 — Agent quality + plan editing + create-agents (PLANNING)
 Bone vs Dogi (locked understanding): **Dogi = one column** (fills one field/row, column-specific); **Bone = orchestrator** (sources rows + creates many columns, each a Dogi, run in dep order). See `devx/bone.md`.
-- [ ] **Default to a web-search-capable model.** Make the default brain a model with real built-in search (OpenAI `gpt-4o-search-preview`-class) instead of `gpt-4o-mini`; when OpenSERP/Firecrawl are running, Bone defaults its columns to `web:external + scrape` (most reliable + cited). Per-Dogi brain stays overridable. *(Decide: cost vs quality; provider-specific search.)*
-- [ ] **Show the agent structure on confirm.** In the Ask-Bone review, a clear "this agent uses: 🔎 web search · 🧠 LLM · 🕷 scrape · 🔌 provider" summary (overall + per step), before approving.
-- [ ] **Editable Bone plan.** Beyond rename/row-count/remove: edit each step's **instruction**, toggle its **sources**, **add a new column step** inline, and **"Revise with Bone"** (free-text feedback → Bone re-plans). The review becomes an editor, not a preview.
+- [x] **Default to a web-search-capable model.** Make the default brain a model with real built-in search (OpenAI `gpt-4o-search-preview`-class) instead of `gpt-4o-mini`; when OpenSERP/Firecrawl are running, Bone defaults its columns to `web:external + scrape` (most reliable + cited). Per-Dogi brain stays overridable. *(Decide: cost vs quality; provider-specific search.)*
+- [x] **Show the agent structure on confirm.** In the Ask-Bone review, a clear "this agent uses: 🔎 web search · 🧠 LLM · 🕷 scrape · 🔌 provider" summary (overall + per step), before approving.
+- [x] **Editable Bone plan.** Beyond rename/row-count/remove: edit each step's **instruction**, toggle its **sources**, **add a new column step** inline, and **"Revise with Bone"** (free-text feedback → Bone re-plans). The review becomes an editor, not a preview.
 - [ ] **Create agents from the Agents dashboard.** A "New agent" flow on `/agents`: a **Dogi agent** (single column via the Dogi config form) and/or a **Bone flow** (saved goal). Saved agents droppable onto any table.
 - [ ] **`[object Object]` display fix** (carried from R10, held): render structured cell values readably. *(Tied to the agent-quality discussion — is the value real vs structured.)*
 
