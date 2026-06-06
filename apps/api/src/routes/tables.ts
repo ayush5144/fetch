@@ -10,7 +10,7 @@ import {
   listTablesWithCounts,
   seedBlankLead,
 } from '@fetch/core';
-import { getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
+import { clearCells, getColumn, isCellEmpty, planRun, runFormulaColumn } from '@fetch/columns';
 import {
   isSourceRowsStep,
   planBone,
@@ -65,8 +65,13 @@ tablesRoutes.post('/', async (c) => {
 
 /**
  * Patch a table's name/description/icon and/or its `settings` (e.g.
- * `settings.dedupe`, the per-table dedupe policy — Phase G). `settings` replaces
- * the stored object, so callers pass the full settings they want persisted.
+ * `settings.dedupe`, the per-table dedupe policy — Phase G;
+ * `settings.agentColumn`, the flow agent-column toggle — Round 9).
+ *
+ * `settings` is **shallow-merged** into the stored object (not replaced), so a
+ * caller patching one key (e.g. `{ agentColumn: true }`) never clobbers
+ * sibling keys like `settings.flows`/`settings.bone`/`settings.dedupe` that
+ * other flows persist. Pass `{ <key>: null }` to drop a key.
  */
 const patchSchema = createSchema.partial().extend({
   settings: z.record(z.unknown()).optional(),
@@ -74,8 +79,21 @@ const patchSchema = createSchema.partial().extend({
 
 tablesRoutes.patch('/:id', async (c) => {
   const id = c.req.param('id');
-  const patch = patchSchema.parse(await c.req.json());
-  const [updated] = await db.update(tables).set(patch).where(eq(tables.id, id)).returning();
+  const { settings, ...rest } = patchSchema.parse(await c.req.json());
+
+  const existing = await db.query.tables.findFirst({ where: eq(tables.id, id) });
+  if (!existing) return c.json({ error: 'not found' }, 404);
+
+  const merged =
+    settings !== undefined
+      ? { ...((existing.settings as Record<string, unknown> | null) ?? {}), ...settings }
+      : undefined;
+
+  const [updated] = await db
+    .update(tables)
+    .set({ ...rest, ...(merged !== undefined ? { settings: merged } : {}) })
+    .where(eq(tables.id, id))
+    .returning();
   if (!updated) return c.json({ error: 'not found' }, 404);
   return c.json({ table: updated });
 });
@@ -418,18 +436,28 @@ tablesRoutes.post('/:id/run', async (c) => {
 
 type ColumnRow = typeof columnsTable.$inferSelect;
 
+/** A short, URL-safe id for a persisted flow (e.g. `flow_a1b2c3d4`). */
+function shortFlowId(): string {
+  return `flow_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
+}
+
 /**
  * Create ONE `dogi` column per column step (idempotent by key, audited), exactly
  * as apply-plan does. Reuses the caller's `byKey` map of already-present columns
  * so re-applying reuses instead of duplicating. Collects the keys of root steps
  * (`dependsOn` empty) so the caller can enqueue them. `brain` (when given) is
  * folded into each created column's config so Bone's default brain drives runs.
+ *
+ * `flowId` (optional, default-off) tags each NEWLY created column with
+ * `config.flowId` so a Bone run's columns can be re-run as a unit. apply-plan /
+ * ask-dogi pass nothing, so their columns are NEVER flow-tagged.
  */
 async function createPlanColumns(
   tableId: string,
   steps: DogiPlanStep[],
   byKey: Map<string, ColumnRow>,
   brain?: DogiBrain,
+  flowId?: string,
 ): Promise<{ created: ColumnRow[]; rootKeys: string[] }> {
   const created: ColumnRow[] = [];
   const rootKeys: string[] = [];
@@ -458,6 +486,8 @@ async function createPlanColumns(
     // Bone hands its default brain to the columns it builds (unless the step
     // already carries one). Lets a table's settings.bone.brain drive runs.
     if (brain) config.brain = brain;
+    // Tag the column with the flow that built it (Bone runs only).
+    if (flowId) config.flowId = flowId;
 
     try {
       const [col] = await db
@@ -683,9 +713,13 @@ tablesRoutes.post('/:id/bone/plan', async (c) => {
  *     (from `settings.bone`) is handed to the columns it builds.
  *  3. ENQUEUE — kick off the ROOT columns across ALL the table's leads (incl. the
  *     newly sourced ones), run-only-if-empty; dependents chain in the worker.
+ *  4. PERSIST — append a re-runnable flow entry to `table.settings.flows` (the
+ *     goal, the steps, every column key it created/targeted, the source-rows
+ *     steps) and tag each created column with `config.flowId`, so the whole flow
+ *     can be re-run via `POST /tables/:id/flow/:flowId/run` (Round 9).
  *
- * Returns `{ rowsCreated, columnsCreated, enqueued }`. 404 unknown table, 400 on
- * an empty/invalid plan.
+ * Returns `{ rowsCreated, columnsCreated, enqueued, flowId }`. 404 unknown table,
+ * 400 on an empty/invalid plan.
  */
 tablesRoutes.post('/:id/bone/run', async (c) => {
   const tableId = c.req.param('id');
@@ -708,6 +742,13 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
   const steps = body.plan.steps as BonePlanStep[];
   const sourceSteps = steps.filter((s): s is SourceRowsStep => isSourceRowsStep(s));
   const columnSteps = steps.filter((s) => !isSourceRowsStep(s)) as DogiPlanStep[];
+
+  // This run's flow id — every column it creates/targets gets tagged with it, and
+  // it's persisted to settings.flows so the flow can be re-run as a unit.
+  const flowId = shortFlowId();
+  // Every column key this run created OR targeted (sourced primary fields +
+  // dogi column outputs), so the flow knows which columns to re-fill.
+  const flowColumnKeys = new Set<string>();
 
   // Existing columns up front, so the primary-field column we materialize is
   // idempotent (skip if present) and can be positioned left of enrichment ones.
@@ -742,8 +783,9 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
             label: step.primaryLabel,
             type: 'manual',
             // Bone-created (manual) column — provenance so the grid can show
-            // "by Bone" (a dogi column self-identifies by type:'dogi').
-            config: { createdBy: 'bone' },
+            // "by Bone" (a dogi column self-identifies by type:'dogi'); the
+            // flowId ties it to this re-runnable flow.
+            config: { createdBy: 'bone', flowId },
             position: -1 - primaryColsCreated,
           })
           .returning();
@@ -754,12 +796,13 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
           entityId: col!.id,
           action: 'create',
           actor: 'bone',
-          diff: { key: step.primaryField, sourcedPrimary: true },
+          diff: { key: step.primaryField, sourcedPrimary: true, flowId },
         });
       } catch {
         // A clash on key/label — the column already exists; reuse it.
       }
     }
+    flowColumnKeys.add(step.primaryField);
 
     const [source] = await db
       .insert(sources)
@@ -773,23 +816,168 @@ tablesRoutes.post('/:id/bone/run', async (c) => {
     rowsCreated += created;
   }
 
-  // 2) Create columns, reusing apply-plan's idempotent/audited logic.
+  // 2) Create columns, reusing apply-plan's idempotent/audited logic. Tag them
+  //    with this flow id so the flow can re-fill them later.
   const before = byKey.size;
-  const { rootKeys } = await createPlanColumns(tableId, columnSteps, byKey, brain);
+  const { rootKeys } = await createPlanColumns(tableId, columnSteps, byKey, brain, flowId);
   const columnsCreated = byKey.size - before;
+  for (const step of columnSteps) {
+    const key = (step.output?.key && step.output.key.trim()) || snakeCase(step.label);
+    if (key) flowColumnKeys.add(key);
+  }
 
   // 3) Enqueue the root columns across ALL leads (incl. newly sourced).
   const enqueued = await enqueueRootRuns(tableId, rootKeys, body.apiKey);
+
+  // 4) Persist the flow so it can be re-run as a unit. Read-modify-write
+  //    settings.flows (like settings.bone), never clobbering sibling settings.
+  const goal = body.plan.goal ?? null;
+  const name = (goal ?? `Flow ${flowId}`).trim().slice(0, 60);
+  const flowEntry = {
+    id: flowId,
+    name,
+    goal,
+    steps,
+    columnKeys: [...flowColumnKeys],
+    sourceSteps,
+    createdAt: new Date().toISOString(),
+  };
+  const fresh = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  const prevSettings = (fresh?.settings as Record<string, unknown> | null) ?? {};
+  const prevFlows = Array.isArray(prevSettings.flows) ? prevSettings.flows : [];
+  await db
+    .update(tables)
+    .set({ settings: { ...prevSettings, flows: [...prevFlows, flowEntry] } })
+    .where(eq(tables.id, tableId));
 
   await audit({
     entity: 'table',
     entityId: tableId,
     action: 'update',
     actor: 'bone',
-    diff: { bone: { goal: body.plan.goal ?? null, rowsCreated, columnsCreated, enqueued } },
+    diff: { bone: { goal, rowsCreated, columnsCreated, enqueued, flowId } },
   });
 
-  return c.json({ rowsCreated, columnsCreated, enqueued });
+  return c.json({ rowsCreated, columnsCreated, enqueued, flowId });
+});
+
+// ── Run a persisted flow as a unit (Round 9) ──────────────────────────────────
+
+type FlowEntry = {
+  id: string;
+  name: string;
+  goal: string | null;
+  steps: BonePlanStep[];
+  columnKeys: string[];
+  sourceSteps: SourceRowsStep[];
+  createdAt: string;
+};
+
+const flowRunSchema = z.object({
+  /** Append ~this many more rows by re-running the flow's source steps (1–50). */
+  sourceMore: z.number().int().positive().optional(),
+  /** Re-fill: clear the flow's column cells first so they re-run (else only-if-empty). */
+  force: z.boolean().default(false),
+  /** Optional BYOK key threaded to the runs; never persisted. */
+  apiKey: z.string().optional(),
+});
+
+/**
+ * Re-run a persisted Bone flow as a unit (Round 9). Looks the flow up in
+ * `table.settings.flows` (404 if the table or flow is unknown), then:
+ *
+ *  1. If `sourceMore > 0`: re-run the flow's `sourceSteps` to APPEND ~that many
+ *     rows (clamped 1–50; the table's dedupe still applies, so re-sourcing the
+ *     same list won't duplicate), reusing `sourceRows` + `insertSourcedRows`.
+ *  2. Enqueue ALL the flow's runnable (dogi) columns across the table's leads in
+ *     dependency order (reusing `enqueueRootRuns`; dependents chain in the
+ *     worker). Default run-only-if-empty; with `force`, the flow's column cells
+ *     are CLEARED first so every cell re-runs.
+ *
+ * Returns `{ rowsCreated, columnsRun, enqueued }`. Audited with the flow id.
+ */
+tablesRoutes.post('/:id/flow/:flowId/run', async (c) => {
+  const tableId = c.req.param('id');
+  const flowId = c.req.param('flowId');
+  const table = await db.query.tables.findFirst({ where: eq(tables.id, tableId) });
+  if (!table) return c.json({ error: 'not found' }, 404);
+
+  const flows = ((table.settings as { flows?: FlowEntry[] } | null)?.flows ?? []) as FlowEntry[];
+  const flow = flows.find((f) => f.id === flowId);
+  if (!flow) return c.json({ error: 'unknown flow' }, 404);
+
+  const body = flowRunSchema.parse(await c.req.json().catch(() => ({})));
+
+  const boneSettings = (table.settings as { bone?: { brain?: DogiBrain } } | null)?.bone ?? undefined;
+  const brain = boneSettings?.brain;
+
+  // 1) Optionally source MORE rows by re-running the flow's source steps. We
+  //    clamp the requested count 1–50 and split it across the flow's source
+  //    steps (so a multi-source flow still respects the ceiling).
+  let rowsCreated = 0;
+  if (body.sourceMore && body.sourceMore > 0 && flow.sourceSteps.length > 0) {
+    const total = Math.max(1, Math.min(50, body.sourceMore));
+    const per = Math.max(1, Math.ceil(total / flow.sourceSteps.length));
+    for (const step of flow.sourceSteps) {
+      const { rows } = await sourceRows({
+        description: step.description,
+        count: per,
+        fields: [step.primaryField],
+        brain,
+        apiKey: body.apiKey,
+      });
+      if (rows.length === 0) continue;
+      const [source] = await db
+        .insert(sources)
+        .values({ type: 'manual', raw: { flow: flowId, description: step.description, count: per } })
+        .returning();
+      const { created } = await insertSourcedRows(rows, {
+        tableId,
+        sourceId: source!.id,
+        actor: 'bone',
+      });
+      rowsCreated += created;
+    }
+  }
+
+  // 2) Resolve the flow's RUNNABLE (dogi) columns. We enqueue only the ROOTS
+  //    (no flow-internal dependency); the worker chains dependents per lead as
+  //    each input fills (apps/worker enrich handler), exactly like /bone/run.
+  const cols = await db.query.columns.findMany({ where: eq(columnsTable.tableId, tableId) });
+  const flowKeySet = new Set(flow.columnKeys);
+  const runnable = cols.filter((col) => flowKeySet.has(col.key) && col.type === 'dogi');
+  const rootKeys = runnable
+    .filter((col) => {
+      const deps = ((col.config as { dependsOn?: string[] } | null)?.dependsOn ?? []).filter((d) =>
+        flowKeySet.has(d),
+      );
+      return deps.length === 0;
+    })
+    .map((col) => col.key);
+
+  // With `force`, clear ALL the flow's column cells so the whole flow re-runs;
+  // else run-only-if-empty leaves filled cells untouched. Clearing the dependents
+  // too means the chain re-fills them as their (re-cleared) inputs come back.
+  if (body.force) {
+    const leadIds = (await db.query.leads.findMany({ where: eq(leads.tableId, tableId) })).map(
+      (l) => l.id,
+    );
+    for (const col of runnable) await clearCells(leadIds, col.key);
+  }
+
+  // Enqueue the flow's root columns across all leads (run-only-if-empty after the
+  // clear); dependents chain in the worker.
+  const enqueued = await enqueueRootRuns(tableId, rootKeys, body.apiKey);
+
+  await audit({
+    entity: 'table',
+    entityId: tableId,
+    action: 'flow_run',
+    actor: 'bone',
+    diff: { flowId, rowsCreated, columnsRun: runnable.length, enqueued, force: body.force },
+  });
+
+  return c.json({ rowsCreated, columnsRun: runnable.length, enqueued });
 });
 
 // ── Columns within a table ────────────────────────────────────────────────────

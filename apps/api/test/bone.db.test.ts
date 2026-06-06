@@ -215,4 +215,138 @@ describe('POST /tables/:id/bone/run', () => {
     const res = await post(`/tables/nope/bone/run`, { plan });
     expect(res.status).toBe(404);
   });
+
+  it('persists a settings.flows entry and tags created columns with flowId (Round 9)', async () => {
+    sourceRows.mockResolvedValue({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+
+    const res = await post(`/tables/${T}/bone/run`, { plan });
+    const body = await res.json();
+    expect(body.flowId).toMatch(/^flow_/);
+
+    // A flow entry is persisted on the table's settings.
+    const tbl = await db.query.tables.findFirst({ where: eq(tables.id, T) });
+    const flows = (tbl!.settings as any).flows;
+    expect(flows).toHaveLength(1);
+    const flow = flows[0];
+    expect(flow.id).toBe(body.flowId);
+    expect(flow.name).toBe('top 3 EV companies and their CEOs');
+    expect(flow.goal).toBe('top 3 EV companies and their CEOs');
+    // columnKeys covers the sourced primary + the dogi output.
+    expect(flow.columnKeys.sort()).toEqual(['ceo', 'company']);
+    // sourceSteps carries the source-rows step.
+    expect(flow.sourceSteps).toHaveLength(1);
+    expect(flow.sourceSteps[0].primaryField).toBe('company');
+    expect(typeof flow.createdAt).toBe('string');
+
+    // Both the sourced primary column AND the dogi column carry config.flowId.
+    const cols = await db.query.columns.findMany({ where: eq(columns.tableId, T) });
+    const company = cols.find((cc) => cc.key === 'company')!;
+    const ceo = cols.find((cc) => cc.key === 'ceo')!;
+    expect((company.config as any).flowId).toBe(body.flowId);
+    expect((ceo.config as any).flowId).toBe(body.flowId);
+  });
+});
+
+describe('POST /tables/:id/flow/:flowId/run', () => {
+  async function runBone() {
+    sourceRows.mockResolvedValue({
+      rows: [{ company: 'Tesla' }, { company: 'BYD' }],
+      provider: 'openai:test',
+    });
+    const res = await post(`/tables/${T}/bone/run`, { plan });
+    return (await res.json()).flowId as string;
+  }
+
+  it('appends ~sourceMore rows and enqueues the flow columns', async () => {
+    const flowId = await runBone();
+    // Clear the enrich jobs from the initial bone/run so we count only the re-run.
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+
+    // The flow re-run sources 2 MORE companies and re-fills the ceo column.
+    sourceRows.mockResolvedValue({
+      rows: [{ company: 'Rivian' }, { company: 'Lucid' }],
+      provider: 'openai:test',
+    });
+    const res = await post(`/tables/${T}/flow/${flowId}/run`, { sourceMore: 2 });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.rowsCreated).toBe(2); // 2 sourced rows appended
+    expect(body.columnsRun).toBe(1); // the ceo column
+
+    // 4 leads now (2 from bone/run + 2 appended), none blank.
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    expect(rows).toHaveLength(4);
+
+    // The ceo column was enqueued across the empty cells.
+    const enrichJobs = await db.query.jobs.findMany({ where: eq(jobs.type, 'enrich') });
+    expect(enrichJobs.length).toBe(body.enqueued);
+    expect(enrichJobs.every((j) => (j.payload as any).columnKey === 'ceo')).toBe(true);
+  });
+
+  it('404s for an unknown flow', async () => {
+    const res = await post(`/tables/${T}/flow/flow_nope/run`, { sourceMore: 1 });
+    expect(res.status).toBe(404);
+  });
+
+  it('404s for an unknown table', async () => {
+    const res = await post(`/tables/nope/flow/flow_x/run`, {});
+    expect(res.status).toBe(404);
+  });
+
+  it('force clears filled cells so they re-run', async () => {
+    const flowId = await runBone();
+    await db.delete(jobs).where(eq(jobs.type, 'enrich'));
+
+    // Simulate the ceo cells being filled.
+    const rows = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    for (const r of rows) {
+      await db
+        .update(leads)
+        .set({ data: { ...(r.data as any), ceo: 'Someone' } })
+        .where(eq(leads.id, r.id));
+    }
+
+    // Without force: filled cells are skipped → nothing enqueued.
+    const noForce = await post(`/tables/${T}/flow/${flowId}/run`, {});
+    expect((await noForce.json()).enqueued).toBe(0);
+
+    // With force: cells are cleared first → all re-enqueue.
+    const forced = await post(`/tables/${T}/flow/${flowId}/run`, { force: true });
+    const fbody = await forced.json();
+    expect(fbody.enqueued).toBe(rows.length);
+
+    // The values were cleared from data.
+    const after = await db.query.leads.findMany({ where: eq(leads.tableId, T) });
+    for (const r of after) expect((r.data as any).ceo).toBeUndefined();
+  });
+});
+
+describe('apply-plan flowId isolation (Round 9)', () => {
+  it('does NOT tag apply-plan columns with a flowId', async () => {
+    const res = await post(`/tables/${T}/apply-plan`, {
+      steps: [
+        {
+          label: 'CEO',
+          instruction: "Find the company's CEO.",
+          reads: ['company'],
+          output: { mode: 'create', key: 'ceo', label: 'CEO' },
+          sources: [{ type: 'llm' }],
+          policy: 'combine',
+          dependsOn: [],
+        },
+      ],
+    });
+    expect(res.status).toBe(201);
+
+    const cols = await db.query.columns.findMany({ where: eq(columns.tableId, T) });
+    const ceo = cols.find((cc) => cc.key === 'ceo')!;
+    expect((ceo.config as any).flowId).toBeUndefined();
+
+    // No flow persisted either.
+    const tbl = await db.query.tables.findFirst({ where: eq(tables.id, T) });
+    expect((tbl!.settings as any)?.flows).toBeUndefined();
+  });
 });

@@ -1,6 +1,6 @@
 import { db, leads } from '@fetch/db';
 import type { CellProvenance, Lead } from '@fetch/db';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 /**
  * Cell-level read/write helpers for user columns. A "cell" is one key inside
@@ -81,4 +81,22 @@ export async function writeCellFailure(leadId: string, key: string, error: strin
       )}::jsonb, true)`,
     })
     .where(eq(leads.id, leadId));
+}
+
+/**
+ * Clear a cell: drop `key` from BOTH `data` and `enrichmentConf` for the given
+ * leads, so it reads as never-run (empty). Used by the "force" re-run path —
+ * after clearing, run-only-if-empty re-enqueues the cell. The `-` operator
+ * removes a top-level JSONB key (a no-op when absent). One UPDATE per call,
+ * scoped to the passed lead ids; a missing/empty list is a no-op.
+ */
+export async function clearCells(leadIds: string[], key: string): Promise<void> {
+  if (leadIds.length === 0) return;
+  await db
+    .update(leads)
+    .set({
+      data: sql`${leads.data} - ${key}`,
+      enrichmentConf: sql`${leads.enrichmentConf} - ${key}`,
+    })
+    .where(inArray(leads.id, leadIds));
 }
