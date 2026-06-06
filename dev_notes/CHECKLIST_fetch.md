@@ -491,6 +491,13 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 - [x] Renamed the orchestrator agent to **Bone** across code identifiers, routes (`/tables/:id/bone/*`), persisted `table.settings.bone`, MCP tools (`ask_bone`/`run_bone`), UI ("Ask Bone 🐕"), and docs (`bone.md` + all references). **Dogi** (the cell agent) kept as-is.
   - Verified: full suite green; `POST /tables/:id/bone/plan` works and the old `/doggo/plan` 404s; stray-grep for the old name is zero.
 
+### Round 6 — Predefined common fields (recognition + icons; arbitrary preserved). Design: `devx/predefined-fields.md`
+- [ ] **Shared predefined-field registry** (`{ key, label, valueType, icon }`) — single source of truth used by the add-column chips AND the grid `columnIcon`. Includes name/first_name/last_name (👤), email (✉), phone (☎), title (🏷), linkedin_url (🔗), and **company (🏢)**.
+- [ ] **Grid icon by field key**: a column whose key matches a predefined field shows its icon (so `company` → 🏢, not `T`). Resolution: predefined-key → value-type → column-type → `T`.
+- [ ] **Add-column "Common fields"** chips use the registry (icons shown); picking one pre-fills key+label+type. Custom columns of any name/type still work.
+- [ ] **No schema change** — `company` stays an arbitrary `data` key (Round 5 already surfaces it to Dogi). Frontend-only.
+  - Test: a `company`-keyed column renders 🏢; picking "Company" creates a `company` text column; an arbitrary column is unaffected; web typecheck clean.
+
 ## Ship Gate (Clay/Dogi direction)
 
 - [ ] Create a table, add leads, and operate it like a spreadsheet (inline +column, edit any field, drag/resize/reorder, add row)
