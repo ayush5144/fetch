@@ -761,6 +761,88 @@ table.tbl {
   color: var(--green);
 }
 
+/* "This agent will use" — capability summary above the plan review. */
+.bone-agent-uses {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+.bone-agent-uses-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bone-agent-uses-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Per-step source toggles inside a column step card. */
+.bone-step-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bone-step-sources-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bone-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.bone-source-chip:hover {
+  border-color: var(--border-strong);
+}
+.bone-source-chip input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.bone-source-chip-sm {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* "+ Add column" button in the plan review. */
+.bone-add-col {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+.bone-add-col:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /* progress bar (analytics funnel) */
 .bar {
   height: 8px;

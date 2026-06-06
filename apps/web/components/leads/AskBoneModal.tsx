@@ -37,17 +37,76 @@ import {
   type BoneSettings,
   type DogiSource,
   type LLMProvider,
+  type WebSearchVia,
 } from '@/lib/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function sourceLabel(source: DogiSource): string {
-  switch (source.type) {
-    case 'provider': return `Provider (${source.name})`;
-    case 'web': return `Web search (${source.via})`;
-    case 'scrape': return 'Scrape (Firecrawl)';
-    case 'llm': return 'LLM';
+// ── Agent-structure summary ────────────────────────────────────────────────
+// Derive the union of capabilities across all column steps so the user can see
+// what the agent will use before approving. Calm, on-brand chips.
+
+interface AgentCapability {
+  key: string;
+  icon: string;
+  label: string;
+}
+
+function agentCapabilities(steps: BonePlanStep[]): AgentCapability[] {
+  let web = false, llm = false, scrape = false, provider = false;
+  for (const s of steps) {
+    if (isSourceRowsStep(s)) continue;
+    for (const src of s.sources) {
+      if (src.type === 'web') web = true;
+      else if (src.type === 'llm') llm = true;
+      else if (src.type === 'scrape') scrape = true;
+      else if (src.type === 'provider') provider = true;
+    }
   }
+  const caps: AgentCapability[] = [];
+  if (web) caps.push({ key: 'web', icon: '🔎', label: 'Web search' });
+  if (llm) caps.push({ key: 'llm', icon: '🧠', label: 'LLM' });
+  if (scrape) caps.push({ key: 'scrape', icon: '🕷', label: 'Scrape' });
+  if (provider) caps.push({ key: 'provider', icon: '🔌', label: 'Provider' });
+  return caps;
+}
+
+// Per-step source toggles. We mutate `step.sources` keeping the Dogi config
+// semantics: web → {type:'web',via:'native'|'external'}, scrape →
+// {type:'scrape',via:'firecrawl'}, llm → {type:'llm'}.
+
+function hasSourceType(sources: DogiSource[], type: DogiSource['type']): boolean {
+  return sources.some((s) => s.type === type);
+}
+
+function toggleSourceType(sources: DogiSource[], type: 'web' | 'scrape' | 'llm', on: boolean): DogiSource[] {
+  const without = sources.filter((s) => s.type !== type);
+  if (!on) return without;
+  switch (type) {
+    case 'web': return [...without, { type: 'web', via: 'native' }];
+    case 'scrape': return [...without, { type: 'scrape', via: 'firecrawl' }];
+    case 'llm': return [...without, { type: 'llm' }];
+  }
+}
+
+function setWebVia(sources: DogiSource[], via: WebSearchVia): DogiSource[] {
+  return sources.map((s) => (s.type === 'web' ? { type: 'web', via } : s));
+}
+
+/** A blank column step the user fills in. Defaults to web (native) + llm. */
+function blankColumnStep(): ColumnPlanStep {
+  const id = `step_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    kind: 'column',
+    id,
+    label: 'New column',
+    instruction: '',
+    reads: [],
+    output: { mode: 'create', key: 'new_column', label: 'New column' },
+    sources: [{ type: 'web', via: 'native' }, { type: 'llm' }],
+    policy: 'combine',
+    dependsOn: [],
+  };
 }
 
 const PROVIDERS: { value: LLMProvider; label: string }[] = [
@@ -175,6 +234,22 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
 
   function removeColumnStep(stepId: string) {
     setSteps((prev) => prev.filter((s) => isSourceRowsStep(s) || s.id !== stepId));
+  }
+
+  function setStepInstruction(stepId: string, instruction: string) {
+    setSteps((prev) =>
+      prev.map((s) => (!isSourceRowsStep(s) && s.id === stepId ? { ...s, instruction } : s)),
+    );
+  }
+
+  function setStepSources(stepId: string, sources: DogiSource[]) {
+    setSteps((prev) =>
+      prev.map((s) => (!isSourceRowsStep(s) && s.id === stepId ? { ...s, sources } : s)),
+    );
+  }
+
+  function addColumnStep() {
+    setSteps((prev) => [...prev, blankColumnStep()]);
   }
 
   async function runPlan(p: BonePlan, stepsToRun: BonePlanStep[]) {
@@ -378,6 +453,7 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
 
   const columnCount = steps.filter((s) => !isSourceRowsStep(s)).length;
   const sourceCount = steps.filter(isSourceRowsStep).length;
+  const capabilities = agentCapabilities(steps);
 
   function approveLabel() {
     const parts: string[] = [];
@@ -430,9 +506,23 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
           <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>{plan.goal}</div>
         </div>
 
+        {/* This agent will use — capability summary derived from step sources */}
+        {capabilities.length > 0 && (
+          <div className="bone-agent-uses">
+            <span className="bone-agent-uses-label">This agent will use</span>
+            <div className="bone-agent-uses-chips">
+              {capabilities.map((c) => (
+                <span key={c.key} className="pill" style={{ fontSize: 11, padding: '2px 8px' }}>
+                  <span aria-hidden>{c.icon}</span> {c.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
           Bone will run these steps in order — create rows first, then build and fill columns.
-          Adjust counts or output names below before approving.
+          Edit any step's instruction or sources, add columns, or adjust counts and names before approving.
         </p>
 
         {/* Steps in order */}
@@ -453,14 +543,21 @@ export function AskBoneModal({ tableId, onClose, onDone }: Props) {
                 allSteps={steps}
                 onRenameKey={(newKey) => renameOutputKey(step.id, newKey)}
                 onRemove={() => removeColumnStep(step.id)}
+                onInstructionChange={(instr) => setStepInstruction(step.id, instr)}
+                onSourcesChange={(srcs) => setStepSources(step.id, srcs)}
               />
             ),
           )}
         </div>
 
+        {/* Add a new column step inline */}
+        <button type="button" className="bone-add-col" onClick={addColumnStep}>
+          ＋ Add column
+        </button>
+
         {steps.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-            All steps removed. Go back to ask again.
+            All steps removed — add a column below or go back to ask again.
           </div>
         )}
 
@@ -523,9 +620,11 @@ interface ColumnCardProps {
   allSteps: BonePlanStep[];
   onRenameKey: (newKey: string) => void;
   onRemove: () => void;
+  onInstructionChange: (instruction: string) => void;
+  onSourcesChange: (sources: DogiSource[]) => void;
 }
 
-function ColumnStepCard({ step, index, allSteps, onRenameKey, onRemove }: ColumnCardProps) {
+function ColumnStepCard({ step, index, allSteps, onRenameKey, onRemove, onInstructionChange, onSourcesChange }: ColumnCardProps) {
   const [editingKey, setEditingKey] = useState(false);
   const [keyDraft, setKeyDraft] = useState(step.output.key);
 
@@ -578,46 +677,49 @@ function ColumnStepCard({ step, index, allSteps, onRenameKey, onRemove }: Column
         </button>
       </div>
 
-      {/* Instruction */}
-      <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
-        {step.instruction}
+      {/* Instruction (editable) */}
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Instruction
+        </label>
+        <textarea
+          className="textarea"
+          value={step.instruction}
+          onChange={(e) => onInstructionChange(e.target.value)}
+          placeholder="What should this column fetch or produce?"
+          style={{ minHeight: 56, fontFamily: 'inherit', fontSize: 13 }}
+        />
       </div>
 
-      {/* Meta row */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
-        {step.reads.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Reads:</span>
-            {step.reads.map((r) => (
-              <span key={r} className="pill" style={{ fontSize: 11, padding: '2px 8px' }}>
-                {r}
-              </span>
-            ))}
-          </div>
-        )}
+      {/* Reads + After (read-only meta) */}
+      {(step.reads.length > 0 || depLabels.length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
+          {step.reads.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Reads:</span>
+              {step.reads.map((r) => (
+                <span key={r} className="pill" style={{ fontSize: 11, padding: '2px 8px' }}>
+                  {r}
+                </span>
+              ))}
+            </div>
+          )}
 
-        {step.sources.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Sources:</span>
-            {step.sources.map((src, i) => (
-              <span key={i} className="pill pill-blue" style={{ fontSize: 11, padding: '2px 8px' }}>
-                {sourceLabel(src)}
-              </span>
-            ))}
-          </div>
-        )}
+          {depLabels.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--muted)', fontWeight: 500 }}>After:</span>
+              {depLabels.map((l) => (
+                <span key={l} className="pill pill-accent" style={{ fontSize: 11, padding: '2px 8px' }}>
+                  {l}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-        {depLabels.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--muted)', fontWeight: 500 }}>After:</span>
-            {depLabels.map((l) => (
-              <span key={l} className="pill pill-accent" style={{ fontSize: 11, padding: '2px 8px' }}>
-                {l}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Sources (editable toggles) */}
+      <StepSourceToggles step={step} onSourcesChange={onSourcesChange} />
 
       {/* Output column name (editable) */}
       <div
@@ -683,6 +785,80 @@ function ColumnStepCard({ step, index, allSteps, onRenameKey, onRemove }: Column
           New column
         </span>
       </div>
+    </div>
+  );
+}
+
+// ── StepSourceToggles ─────────────────────────────────────────────────────────
+// Per-step source chips. Toggling mutates step.sources with the Dogi config
+// semantics. Web search exposes a native/external sub-choice when on.
+
+function StepSourceToggles({
+  step,
+  onSourcesChange,
+}: {
+  step: ColumnPlanStep;
+  onSourcesChange: (sources: DogiSource[]) => void;
+}) {
+  const webOn = hasSourceType(step.sources, 'web');
+  const scrapeOn = hasSourceType(step.sources, 'scrape');
+  const llmOn = hasSourceType(step.sources, 'llm');
+  const webVia = (step.sources.find((s) => s.type === 'web') as { via: WebSearchVia } | undefined)?.via ?? 'native';
+
+  return (
+    <div className="bone-step-sources">
+      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Sources
+      </span>
+      <div className="bone-step-sources-row">
+        <label className="bone-source-chip">
+          <input
+            type="checkbox"
+            checked={webOn}
+            onChange={(e) => onSourcesChange(toggleSourceType(step.sources, 'web', e.target.checked))}
+          />
+          <span>🔎 Web search</span>
+        </label>
+        <label className="bone-source-chip">
+          <input
+            type="checkbox"
+            checked={scrapeOn}
+            onChange={(e) => onSourcesChange(toggleSourceType(step.sources, 'scrape', e.target.checked))}
+          />
+          <span>🕷 Scrape</span>
+        </label>
+        <label className="bone-source-chip">
+          <input
+            type="checkbox"
+            checked={llmOn}
+            onChange={(e) => onSourcesChange(toggleSourceType(step.sources, 'llm', e.target.checked))}
+          />
+          <span>🧠 LLM</span>
+        </label>
+      </div>
+      {webOn && (
+        <div className="bone-step-sources-row" style={{ marginLeft: 4 }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>Web via:</span>
+          <label className="bone-source-chip bone-source-chip-sm">
+            <input
+              type="radio"
+              name={`web-via-${step.id}`}
+              checked={webVia === 'native'}
+              onChange={() => onSourcesChange(setWebVia(step.sources, 'native'))}
+            />
+            <span>Native</span>
+          </label>
+          <label className="bone-source-chip bone-source-chip-sm">
+            <input
+              type="radio"
+              name={`web-via-${step.id}`}
+              checked={webVia === 'external'}
+              onChange={() => onSourcesChange(setWebVia(step.sources, 'external'))}
+            />
+            <span>External (Serper)</span>
+          </label>
+        </div>
+      )}
     </div>
   );
 }

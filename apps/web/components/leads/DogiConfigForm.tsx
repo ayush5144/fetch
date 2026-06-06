@@ -97,6 +97,8 @@ const LLM_PROVIDERS: {
     models: [
       { value: 'gpt-4.1', label: 'GPT-4.1' },
       { value: 'gpt-4o', label: 'GPT-4o' },
+      { value: 'gpt-4o-search-preview', label: 'GPT-4o (web search)' },
+      { value: 'gpt-4o-mini-search-preview', label: 'GPT-4o mini (web search)' },
     ],
   },
   {
