@@ -31,7 +31,19 @@ const schema = z.object({
   FINDYMAIL_API_KEY: z.string().optional(),
   DROPCONTACT_API_KEY: z.string().optional(),
 
+  // Web search backends. OPENSERP_URL points at a self-hosted OpenSERP service
+  // (https://github.com/karust/openserp) — no API key. OPENSERP_ENGINE picks
+  // the search engine it drives ('google' default; 'yandex'/'duckduckgo'/'baidu'
+  // are alternates for datacenter IPs where Google CAPTCHAs). SERPER_API_KEY is
+  // the hosted fallback.
+  OPENSERP_URL: z.string().optional(),
+  OPENSERP_ENGINE: z.string().optional(),
   SERPER_API_KEY: z.string().optional(),
+
+  // Scrape backends. FIRECRAWL_API_URL points at a self-hosted Firecrawl (no key
+  // required; FIRECRAWL_API_KEY is sent as a bearer only if also set).
+  // FIRECRAWL_API_KEY alone uses hosted Firecrawl.
+  FIRECRAWL_API_URL: z.string().optional(),
   FIRECRAWL_API_KEY: z.string().optional(),
 
   REACHER_URL: z.string().optional(),

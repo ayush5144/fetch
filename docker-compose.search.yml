@@ -1,0 +1,133 @@
+# Fetch — OPT-IN search & scrape stack (NOT part of the baseline boot).
+#
+# The core product boots with just Postgres (see scripts/dev.sh / infra/).
+# This file adds the two OPTIONAL self-hosted dependencies the Dogi research
+# loop can use for real web data, with NO paid API keys:
+#
+#   • openserp   — free self-hosted SERP (Google/Yandex/Baidu/DuckDuckGo) via a
+#                  headless browser. Host :7001 → container :7000.
+#   • firecrawl  — self-hosted scrape → markdown. Host :3002 → API. Pulls a
+#                  small fleet (api + playwright + redis + rabbitmq + nuq-postgres).
+#
+# Run everything:
+#   docker compose -f docker-compose.search.yml up -d
+# Run only OpenSERP (lighter; no Firecrawl footprint):
+#   docker compose -f docker-compose.search.yml up -d openserp
+# Tear down:
+#   docker compose -f docker-compose.search.yml down
+#
+# Then point the app at them (see .env.example):
+#   OPENSERP_URL=http://localhost:7001
+#   OPENSERP_ENGINE=yandex            # google needs a non-datacenter IP (CAPTCHA)
+#   FIRECRAWL_API_URL=http://localhost:3002
+#
+# Images are PINNED BY DIGEST (captured 2026-06-06). To refresh: re-pull :latest
+# and update the digests. See devx/RUN-search-stack.md for the full runbook.
+
+name: fetch-search
+
+services:
+  # ── OpenSERP — free SERP, no API key ───────────────────────────────────────
+  # karust/openserp publishes only a :latest tag on Docker Hub, so we pin by
+  # digest for reproducibility.
+  openserp:
+    image: karust/openserp@sha256:ba72e41f216bd734c65d5c1c5a2639aa4c3e263a106c3ed2d858bf07cae9a6eb
+    container_name: fetch-openserp
+    restart: unless-stopped
+    command: ['serve', '-a', '0.0.0.0', '-p', '7000']
+    ports:
+      - '7001:7000'
+    healthcheck:
+      # Yandex works from a datacenter IP; Google is CAPTCHA-blocked there.
+      test:
+        ['CMD', 'wget', '-qO-', 'http://localhost:7000/yandex/search?text=ping&lang=EN&limit=1']
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+
+  # ── Firecrawl (self-hosted scrape → markdown) ──────────────────────────────
+  # Uses the PUBLISHED images (no local source build needed). Footprint is
+  # non-trivial: ~5 containers, the api alone wants up to 8G/4cpu. Bring this
+  # up only when you need scrape. No API key required for self-host.
+  firecrawl-api:
+    image: ghcr.io/firecrawl/firecrawl@sha256:f17f8b8d32a3a30b24435a8b55537928ceca3ce3b060882de0413615e55f56c9
+    container_name: fetch-firecrawl-api
+    restart: unless-stopped
+    command: ['node', 'dist/src/harness.js', '--start-docker']
+    environment:
+      HOST: '0.0.0.0'
+      PORT: '3002'
+      INTERNAL_PORT: '3002'
+      EXTRACT_WORKER_PORT: '3004'
+      WORKER_PORT: '3005'
+      ENV: local
+      REDIS_URL: redis://firecrawl-redis:6379
+      REDIS_RATE_LIMIT_URL: redis://firecrawl-redis:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://firecrawl-playwright:3000/scrape
+      NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
+      POSTGRES_HOST: firecrawl-nuq-postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      USE_DB_AUTHENTICATION: 'false'
+      NUM_WORKERS_PER_QUEUE: '4'
+      MAX_CONCURRENT_JOBS: '5'
+      BROWSER_POOL_SIZE: '5'
+      HARNESS_STARTUP_TIMEOUT_MS: '60000'
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    ports:
+      - '3002:3002'
+    depends_on:
+      firecrawl-redis:
+        condition: service_started
+      firecrawl-playwright:
+        condition: service_started
+      firecrawl-rabbitmq:
+        condition: service_healthy
+    # Resource limits — raise if you have headroom.
+    cpus: 4.0
+    mem_limit: 8g
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service@sha256:443030bed5c8162c85998276f76bf7f8a95545dfeb088581f41f91506cfa1017
+    container_name: fetch-firecrawl-playwright
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      MAX_CONCURRENT_PAGES: '10'
+    cpus: 2.0
+    mem_limit: 4g
+
+  firecrawl-redis:
+    image: redis:alpine
+    container_name: fetch-firecrawl-redis
+    restart: unless-stopped
+    command: ['redis-server', '--bind', '0.0.0.0']
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    container_name: fetch-firecrawl-rabbitmq
+    restart: unless-stopped
+    command: ['rabbitmq-server']
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_running']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  firecrawl-nuq-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres@sha256:f9388bd25ae2e1f1d034518236f993ce236173c1d8800ce24092ea6643a95a33
+    container_name: fetch-firecrawl-nuq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres

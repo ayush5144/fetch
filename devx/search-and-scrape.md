@@ -1,8 +1,11 @@
 # Search & Scrape — self-hosted, open-source, configurable
 
-> Status: **PLANNING** — agreed direction, not yet built. This is the architecture
-> for giving Dogi real web data *without* depending on a paid API, in keeping with
-> "open-source, self-hostable Clay."
+> Status: **AS BUILT (v1)** — the two tool backends, the env config, and the
+> `GET /settings` availability report are implemented and tested. What remains
+> opt-in/infra (the compose `search` profile, `.env.example` rows, running
+> Firecrawl locally) is owned by the infra agent / `devx/RUN-search-stack.md`.
+> This doc is the architecture for giving Dogi real web data *without* depending
+> on a paid API, in keeping with "open-source, self-hostable Clay."
 
 ## 1. Why
 
@@ -35,29 +38,66 @@ the LLM calls `web_search` (→ OpenSERP) to get result URLs, then `scrape_url`
 (→ Firecrawl) to read the best page, then returns `{value, confidence, source}`.
 We are swapping the *backends* of those two tools, not the loop.
 
-## 3. Backend selection (configurable, with graceful fallback)
+## 3. Backend selection (configurable, with graceful fallback) — **as built**
 
-**Web search** (`webSearch.ts`) picks a backend at call time:
-1. `OPENSERP_URL` set → **OpenSERP** (`GET {OPENSERP_URL}/google/search?text=…&lang=EN&limit=N` → `[{url,title,description}]`).
-2. else `SERPER_API_KEY` set → Serper (kept for hosted users).
-3. else → "web_search unavailable" (the loop still runs with fewer tools, as today).
+Both tools choose their backend from env **at call time** (no restart wiring,
+no per-Dogi backend choice — that stays the env's job). The normalized output is
+identical across backends, so the research loop never changes.
 
-**Scrape** (`scrapeUrl.ts`):
-1. `FIRECRAWL_API_URL` set → **self-hosted Firecrawl** (`POST {FIRECRAWL_API_URL}/v1/scrape`, no key, or key optional).
-2. else `FIRECRAWL_API_KEY` set → hosted Firecrawl.
-3. else → "scrape_url unavailable".
+**Web search** (`packages/agent/src/tools/webSearch.ts`):
+1. `OPENSERP_URL` set → **OpenSERP**:
+   `GET {OPENSERP_URL}/{engine}/search?text=…&lang=EN&limit=5`, where
+   `engine = OPENSERP_ENGINE || 'google'`. Parses the response's
+   `results: [{ title, url, snippet }]` and **normalizes to the existing Serper
+   shape** `[{ title, link, snippet }]` (url→link, snippet kept; description also
+   accepted). On OpenSERP error JSON (e.g. `{error:'captcha_detected'}`) it
+   returns a clear, **non-fatal** `web_search unavailable: …` message; on an
+   unreachable host or zero results it returns a likewise-clear message.
+2. else `SERPER_API_KEY` set → **Serper** (hosted Google; kept for cloud users).
+3. else → `web_search unavailable: no search backend configured …`.
+
+When both `OPENSERP_URL` and `SERPER_API_KEY` are set, **OpenSERP wins**.
+
+**Scrape** (`packages/agent/src/tools/scrapeUrl.ts`):
+1. `FIRECRAWL_API_URL` set → **self-hosted Firecrawl**:
+   `POST {FIRECRAWL_API_URL}/v1/scrape` with `{url, formats:['markdown']}`. **No
+   key required**; a `Bearer {FIRECRAWL_API_KEY}` header is added only if that
+   key is *also* set (for a secured self-host). Parses the same `data.markdown`
+   the hosted path uses (capped at 8000 chars).
+2. else `FIRECRAWL_API_KEY` set → **hosted Firecrawl** (`api.firecrawl.dev`).
+3. else → `scrape_url unavailable: no scrape backend configured …`.
+
+When both are set, the **self-hosted URL wins**.
 
 This keeps **BYO-hosted and BYO-cloud both working**, and the precedence means a
 self-host setup (just set the two URLs) needs no API keys.
+
+### OpenSERP engine config (`OPENSERP_ENGINE`)
+
+OpenSERP drives a real browser against the chosen engine. `google` is the
+**default** and best for residential IPs. On **datacenter IPs** (CI, cloud VMs)
+Google frequently returns a CAPTCHA — the tool surfaces that as the non-fatal
+`captcha_detected` message above. Set `OPENSERP_ENGINE=yandex` (or `duckduckgo`
+/ `baidu`) to fall back to an engine that answers from such IPs. In this dev
+environment `yandex` works and `google` is CAPTCHA-blocked, so local runs use
+`OPENSERP_URL=http://localhost:7001 OPENSERP_ENGINE=yandex`.
 
 ## 4. Per-Dogi enable/disable (already partly there)
 
 - The per-Dogi **sources** already toggle web-search and scrape on/off
   (`DogiConfigForm`). Those toggles stay the user-facing switch.
-- **Availability** is surfaced from `GET /settings` (extend it): report
-  `openserp` and `firecrawl_selfhosted` as configured/not, so the UI can show
-  "web search: self-hosted (OpenSERP)" vs "not configured" and disable the toggle
-  with a hint when the backend isn't running.
+- **Availability** is surfaced from `GET /settings` (**as built**): a new
+  `search` block reports presence-only booleans — `openserp`
+  (`OPENSERP_URL` set), `serper` (`SERPER_API_KEY` set), `firecrawl_selfhosted`
+  (`FIRECRAWL_API_URL` set), and `firecrawl` (`FIRECRAWL_API_KEY` set). The
+  existing `keys` block is unchanged. The UI can show "web search: self-hosted
+  (OpenSERP)" vs "not configured" and disable the per-Dogi toggle with a hint
+  when the backend isn't running. Example:
+
+  ```json
+  "search": { "openserp": true, "serper": false,
+              "firecrawl_selfhosted": false, "firecrawl": false }
+  ```
 - A Dogi that enables web-search/scrape while the backend is down gets a clear,
   **non-fatal** tool message ("web_search unavailable…") — never a crash.
 
@@ -104,17 +144,26 @@ FIRECRAWL_API_KEY=       # hosted fallback (or auth for a secured self-host)
   `linkedin.com/in/...` URL in the result), not scraping the page. The tool should
   prefer returning the result URL for "find the LinkedIn" tasks.
 
-## 8. Build steps (when we start)
+## 8. Build steps — status
 
-1. `webSearch.ts`: add the OpenSERP backend + env precedence; normalize results to
-   the existing shape. Unit-test backend selection.
-2. `scrapeUrl.ts`: add `FIRECRAWL_API_URL` (self-hosted) precedence.
-3. `GET /settings`: report `openserp` / `firecrawl_selfhosted` availability; UI
-   shows it and gates the toggles.
-4. Compose/`docs`: an opt-in `search` profile + a README section; `.env.example`
-   gains the four vars above.
-5. Verify live: run OpenSERP + Firecrawl locally, point a Dogi at web+scrape, and
-   confirm a LinkedIn/CEO cell fills *with a real source URL*.
+1. ~~`webSearch.ts`: add the OpenSERP backend + env precedence; normalize results
+   to the existing shape. Unit-test backend selection.~~ **Done.**
+2. ~~`scrapeUrl.ts`: add `FIRECRAWL_API_URL` (self-hosted) precedence.~~ **Done.**
+3. ~~`GET /settings`: report `openserp` / `firecrawl_selfhosted` availability~~
+   **Done** (the `search` block above); the UI gating is the frontend agent's.
+4. **Infra (not this agent):** an opt-in compose `search` profile + a README
+   section; `.env.example` gains `OPENSERP_URL`, `OPENSERP_ENGINE`,
+   `FIRECRAWL_API_URL`, `FIRECRAWL_API_KEY`, `SERPER_API_KEY`. See
+   `devx/RUN-search-stack.md`.
+5. **Verified live:** with `OPENSERP_URL=http://localhost:7001
+   OPENSERP_ENGINE=yandex`, `web_search` for "Hero MotoCorp CEO LinkedIn"
+   returns real `linkedin.com/in/...` URLs and the current-CEO news in the
+   normalized `[{title,link,snippet}]` shape. Pointing a full Dogi at web+scrape
+   for a CEO/LinkedIn cell is the remaining end-to-end check.
+
+The new env vars live in the zod schema at `packages/core/src/env.ts`
+(`OPENSERP_URL`, `OPENSERP_ENGINE`, `FIRECRAWL_API_URL` added alongside the
+existing `SERPER_API_KEY` / `FIRECRAWL_API_KEY`).
 
 Related: [dogi-agent.md](./dogi-agent.md) (the research loop + sources),
 [providers-and-keys.md](./providers-and-keys.md), [doggo.md](./doggo.md).

@@ -40,5 +40,17 @@ settingsRoutes.get('/', (c) => {
       smartlead: has('SMARTLEAD_API_KEY'),
       smtp: has('SMTP_HOST'),
     },
+    // Web search + scrape backend availability (presence only). The UI gates the
+    // per-Dogi web/scrape toggles on these and shows which backend is in use.
+    search: {
+      // Self-hosted OpenSERP is configured (preferred web-search backend).
+      openserp: has('OPENSERP_URL'),
+      // Hosted Serper key present (web-search fallback).
+      serper: has('SERPER_API_KEY'),
+      // Self-hosted Firecrawl URL configured (preferred scrape backend).
+      firecrawl_selfhosted: has('FIRECRAWL_API_URL'),
+      // Hosted Firecrawl key present (scrape fallback).
+      firecrawl: has('FIRECRAWL_API_KEY'),
+    },
   });
 });

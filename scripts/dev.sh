@@ -15,6 +15,12 @@
 #   scripts/dev.sh setup        # bootstrap only (no processes started)
 #
 # Ctrl-C stops all three processes cleanly.
+#
+# NOTE: this baseline boots with JUST Postgres. The optional self-hosted web
+# search (OpenSERP) + scrape (Firecrawl) stack is a separate, opt-in profile —
+# it is NOT started here. Bring it up with:  scripts/search.sh up
+# (or: docker compose -f docker-compose.search.yml up -d). See
+# devx/RUN-search-stack.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
