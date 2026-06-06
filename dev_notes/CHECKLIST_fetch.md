@@ -487,9 +487,9 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 ### Audit (2026-06-06): job monitor + activity are functional
 - [x] `/jobs` + `/jobs/summary` show real pg-boss status (grouped); `/activity` shows real `audit_log` (incl. `enrich_failed`). Confirmed functional — the only front/back gap is the R3 frontend item above.
 
-### Round 4 — Rename Bone → Bone (LAST, after the above works)
-- [x] Rename across code identifiers (`bone`→`bone`), routes (`/tables/:id/bone/*` → `/bone/*`), UI ("Ask Bone" → "Ask Bone"), and docs (`bone.md` → `bone.md`, all references). Keep Dogi as the cell agent.
-  - Test: full suite green; "Ask Bone" plans+runs end-to-end; no stray "bone" left.
+### Round 4 — Rename the orchestrator → Bone (DONE)
+- [x] Renamed the orchestrator agent to **Bone** across code identifiers, routes (`/tables/:id/bone/*`), persisted `table.settings.bone`, MCP tools (`ask_bone`/`run_bone`), UI ("Ask Bone 🐕"), and docs (`bone.md` + all references). **Dogi** (the cell agent) kept as-is.
+  - Verified: full suite green; `POST /tables/:id/bone/plan` works and the old `/doggo/plan` 404s; stray-grep for the old name is zero.
 
 ## Ship Gate (Clay/Dogi direction)
 
