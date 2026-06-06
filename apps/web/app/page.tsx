@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Topbar } from '@/components/Topbar';
 import { Modal } from '@/components/Modal';
-import { api, type Table } from '@/lib/api';
+import { api, tablesApi, type Table } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 
 /**
@@ -38,6 +38,13 @@ export default function OverviewPage() {
   const stats = useApi<Overview>('/analytics/overview', 8000);
   const [open, setOpen] = useState(false);
   const [tableMenu, setTableMenu] = useState<{ table: Table; rect: DOMRect } | null>(null);
+  const [query, setQuery] = useState('');
+
+  const allTables = tables.data?.tables ?? [];
+  const q = query.trim().toLowerCase();
+  const visibleTables = q
+    ? allTables.filter((t) => t.name.toLowerCase().includes(q))
+    : allTables;
 
   const l = stats.data?.leads;
   const tiles = [
@@ -69,7 +76,22 @@ export default function OverviewPage() {
         </div>
 
         <div>
-          <div className="section-title">Tables</div>
+          <div
+            className="row"
+            style={{ justifyContent: 'space-between', marginBottom: 12 }}
+          >
+            <div className="section-title" style={{ margin: 0 }}>Tables</div>
+            <label className="search" style={{ minWidth: 220 }}>
+              <span className="muted" style={{ fontSize: 13 }} aria-hidden>⌕</span>
+              <input
+                type="text"
+                placeholder="Search tables…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search tables by name"
+              />
+            </label>
+          </div>
           <div className="table-wrap">
             <table className="tbl">
               <thead>
@@ -82,7 +104,7 @@ export default function OverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {(tables.data?.tables ?? []).map((t) => (
+                {visibleTables.map((t) => (
                   <tr key={t.id}>
                     <td>
                       <Link
@@ -124,12 +146,14 @@ export default function OverviewPage() {
                     </td>
                   </tr>
                 ))}
-                {(tables.data?.tables ?? []).length === 0 && (
+                {visibleTables.length === 0 && (
                   <tr>
                     <td colSpan={5}>
                       <div className="empty">
                         <div className="empty-icon">▦</div>
-                        No tables yet. Create one to start.
+                        {q
+                          ? `No tables match “${query.trim()}”.`
+                          : 'No tables yet. Create one to start.'}
                       </div>
                     </td>
                   </tr>
@@ -149,27 +173,33 @@ export default function OverviewPage() {
           anchorRect={tableMenu.rect}
           onClose={() => setTableMenu(null)}
           onDeleted={tables.refresh}
+          onRenamed={tables.refresh}
         />
       )}
     </>
   );
 }
 
-/** Small context menu for a table card (currently only Delete). */
+/** Small context menu for a table card — Rename (inline) + Delete. */
 function TableCardMenu({
   table,
   anchorRect,
   onClose,
   onDeleted,
+  onRenamed,
 }: {
   table: Table;
   anchorRect: DOMRect;
   onClose: () => void;
   onDeleted: () => void;
+  onRenamed: () => void;
 }) {
-  const top = Math.min(anchorRect.bottom + 4, window.innerHeight - 120);
-  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 200));
+  const top = Math.min(anchorRect.bottom + 4, window.innerHeight - 200);
+  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 240));
   const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(table.name);
+  const [error, setError] = useState<string | null>(null);
 
   async function deleteTable() {
     if (!confirm(`Delete table "${table.name}"? All leads and columns in this table will be permanently removed.`)) return;
@@ -184,17 +214,68 @@ function TableCardMenu({
     }
   }
 
+  async function commitRename() {
+    const next = name.trim();
+    if (!next || next === table.name) { onClose(); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await tablesApi.rename(table.id, next);
+      onRenamed();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Rename failed');
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <div className="col-menu-backdrop" onClick={onClose} />
       <div className="col-menu" style={{ top, left }} role="menu">
-        <button
-          className="col-menu-item danger"
-          disabled={busy}
-          onClick={deleteTable}
-        >
-          <span>🗑</span> {busy ? 'Deleting…' : 'Delete table'}
-        </button>
+        {renaming ? (
+          <div style={{ padding: 10, minWidth: 220 }}>
+            <input
+              className="input"
+              autoFocus
+              value={name}
+              disabled={busy}
+              onChange={(e) => { setName(e.target.value); setError(null); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') onClose();
+              }}
+              aria-label="Table name"
+            />
+            {error && (
+              <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 6 }}>{error}</div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onClose}>Cancel</button>
+              <button
+                className="btn btn-accent btn-sm"
+                disabled={busy || !name.trim()}
+                onClick={commitRename}
+              >
+                {busy ? 'Saving…' : 'Rename'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button className="col-menu-item" onClick={() => { setName(table.name); setError(null); setRenaming(true); }}>
+              <span>Aa</span> Rename
+            </button>
+            <div className="col-menu-sep" />
+            <button
+              className="col-menu-item danger"
+              disabled={busy}
+              onClick={deleteTable}
+            >
+              <span>🗑</span> {busy ? 'Deleting…' : 'Delete table'}
+            </button>
+          </>
+        )}
       </div>
     </>
   );

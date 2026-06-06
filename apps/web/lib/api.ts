@@ -208,6 +208,10 @@ export interface DedupeResult {
 }
 
 export const tablesApi = {
+  /** Rename a table — `PATCH /tables/:id { name }`. */
+  rename: (tableId: string, name: string) =>
+    api.patch<{ table: Table }>(`/tables/${tableId}`, { name }),
+
   /** Preview duplicates for a set of key columns (read-only). */
   duplicates: (tableId: string, keys: string[]) =>
     api.get<DuplicatesPreview>(

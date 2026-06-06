@@ -112,6 +112,23 @@ function getCellValue(lead: Lead, col: Column): unknown {
   return lead.data?.[col.key];
 }
 
+/**
+ * Does a lead match a (lowercased) search query? Case-insensitive substring
+ * match across the recognized identity fields plus every value in `data`. This
+ * is a pure view filter — it never touches data fetching.
+ */
+function leadMatches(lead: Lead, q: string): boolean {
+  if (!q) return true;
+  const identity = [lead.firstName, lead.lastName, lead.email, lead.title];
+  for (const v of identity) {
+    if (v && v.toLowerCase().includes(q)) return true;
+  }
+  for (const v of Object.values(lead.data ?? {})) {
+    if (v != null && String(v).toLowerCase().includes(q)) return true;
+  }
+  return false;
+}
+
 // Column widths. Data columns never shrink below MIN_COL_WIDTH; the table grows
 // to the sum of widths and scrolls horizontally past that point.
 const MIN_COL_WIDTH = 140;
@@ -137,6 +154,9 @@ interface Props {
 export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRefreshColumns }: Props) {
   // ── Selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // ── Row search (a view filter only — never changes data fetching)
+  const [search, setSearch] = useState('');
 
   // ── Editing
   const [editCell, setEditCell] = useState<{ leadId: string; key: string } | null>(null);
@@ -689,6 +709,10 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
   const allSelected = leads.length > 0 && selected.size === leads.length;
   const someSelected = selected.size > 0 && !allSelected;
 
+  // Row search is a pure view filter over the already-loaded leads.
+  const q = search.trim().toLowerCase();
+  const displayLeads = q ? leads.filter((l) => leadMatches(l, q)) : leads;
+
   const availableColumns = columns.map((c) => ({ key: c.key, label: c.label }));
 
   // How many cell jobs for this table are in flight (running or queued). Drives
@@ -736,7 +760,23 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
               Clear selection
             </button>
           </div>
-        ) : null}
+        ) : (
+          <label className="search" style={{ minWidth: 220 }}>
+            <span className="muted" style={{ fontSize: 13 }} aria-hidden>⌕</span>
+            <input
+              type="text"
+              placeholder="Search rows…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search rows"
+            />
+          </label>
+        )}
+        {q && (
+          <span className="muted" style={{ fontSize: 12 }}>
+            {displayLeads.length} of {leads.length} rows
+          </span>
+        )}
         <div className="spacer" />
         {inFlightCount > 0 && (
           <span className="pill grid-working-pill" style={{ fontSize: 12 }}>
@@ -879,7 +919,7 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
             </tr>
           </thead>
           <tbody>
-            {leads.map((lead, idx) => {
+            {displayLeads.map((lead, idx) => {
               const isDragging = rowDrag.current?.id === lead.id;
               const isAbove = rowDragOver?.id === lead.id && rowDragOver.side === 'above';
               const isBelow = rowDragOver?.id === lead.id && rowDragOver.side === 'below';
@@ -948,12 +988,14 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
               );
             })}
 
-            {leads.length === 0 && (
+            {displayLeads.length === 0 && (
               <tr>
                 <td colSpan={columns.length + 3}>
                   <div className="empty">
                     <div className="empty-icon">☰</div>
-                    No rows yet. Add a row or import a CSV.
+                    {q
+                      ? `No rows match “${search.trim()}”.`
+                      : 'No rows yet. Add a row or import a CSV.'}
                   </div>
                 </td>
               </tr>
