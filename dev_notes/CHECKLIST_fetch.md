@@ -498,6 +498,16 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 - [x] **No schema change** — `company` stays an arbitrary `data` key (Round 5 already surfaces it to Dogi). Frontend-only.
   - Test: a `company`-keyed column renders 🏢; picking "Company" creates a `company` text column; an arbitrary column is unaffected; web typecheck clean.
 
+### Round 7 — Dashboard polish (simple, clean UX)
+- [ ] **Overview: rename a table** (in the existing `⋯` menu alongside Delete → `PATCH /tables/:id`, inline edit or small prompt) + **search/filter** the table list by name.
+- [ ] **Table page: heading shows the table name** (not the generic "Leads"), with **rename + delete** there too (a small menu by the heading).
+- [ ] **Search within a table**: a search box filters the visible rows (client-side over loaded leads; case-insensitive across cell values).
+- [ ] Keep it minimal + consistent with existing tokens; no backend change beyond reusing `PATCH /tables/:id` (+ optionally a single-table read if cleaner).
+  - Test: rename persists + reflects in Overview and the heading; table search filters the list; row search filters rows; web typecheck clean.
+
+### Round 8 — Column header: provenance + type (PLANNING — see below)
+- [ ] *(planned)* Show **who made/fills a column** (Dogi 🐕 / Bone 🦴 / formula ƒ / you) AND its **value type** (text/email/url…) without one icon hiding the other; hover the header reveals "Created by … · Type: …" + Edit name / Edit type / Edit config / Delete. Decision pending (badges vs hover vs both).
+
 ## Ship Gate (Clay/Dogi direction)
 
 - [ ] Create a table, add leads, and operate it like a spreadsheet (inline +column, edit any field, drag/resize/reorder, add row)
