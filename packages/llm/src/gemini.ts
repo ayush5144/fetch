@@ -23,14 +23,39 @@ export class GeminiClient implements LLMClient {
   async chat(opts: ChatOptions): Promise<LLMResponse> {
     const system = opts.messages.find((m) => m.role === 'system')?.content;
 
-    // Gemini roles: 'user' and 'model'. Tool results map to a functionResponse
-    // part; we don't track names per id here, so we feed them back as user text.
+    // Gemini roles: 'user' and 'model'. An assistant turn that called tools
+    // becomes `functionCall` parts; each tool result becomes a `functionResponse`
+    // part (role 'user'). Gemini keys responses by function NAME, not id, so we
+    // resolve each tool message's name from the matching call id.
+    const nameById = new Map<string, string>();
+    for (const m of opts.messages) {
+      for (const tc of m.toolCalls ?? []) nameById.set(tc.id, tc.name);
+    }
     const contents = opts.messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      }));
+      .map((m) => {
+        if (m.role === 'tool') {
+          const name = (m.toolCallId && nameById.get(m.toolCallId)) || 'tool';
+          return {
+            role: 'user' as const,
+            parts: [
+              { functionResponse: { name, response: { result: m.content } } },
+            ],
+          };
+        }
+        if (m.role === 'assistant' && m.toolCalls?.length) {
+          const parts: Record<string, unknown>[] = [];
+          if (m.content) parts.push({ text: m.content });
+          for (const tc of m.toolCalls) {
+            parts.push({ functionCall: { name: tc.name, args: tc.input } });
+          }
+          return { role: 'model' as const, parts };
+        }
+        return {
+          role: (m.role === 'assistant' ? 'model' : 'user') as 'model' | 'user',
+          parts: [{ text: m.content }],
+        };
+      });
 
     const body: Record<string, unknown> = { contents };
     if (system) {

@@ -9,6 +9,14 @@ export type Role = 'system' | 'user' | 'assistant' | 'tool';
 export interface LLMMessage {
   role: Role;
   content: string;
+  /**
+   * Present on `assistant` messages that invoked tools: the calls the model
+   * made this turn. Must be replayed verbatim so the following `tool` results
+   * reference live `tool_call_id`s (otherwise OpenAI/Grok 400 with "messages
+   * with role 'tool' must be a response to a preceding message with
+   * 'tool_calls'").
+   */
+  toolCalls?: ToolCall[];
   /** Present on `tool` messages: which tool call this result answers. */
   toolCallId?: string;
 }

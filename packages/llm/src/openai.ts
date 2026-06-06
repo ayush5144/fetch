@@ -1,4 +1,30 @@
-import type { ChatOptions, LLMClient, LLMResponse, ToolCall } from './types';
+import type { ChatOptions, LLMClient, LLMMessage, LLMResponse, ToolCall } from './types';
+
+/**
+ * Map one provider-agnostic message to OpenAI's Chat Completions shape. Shared
+ * by OpenAI and Grok (xAI's Chat Completions is OpenAI-compatible).
+ *
+ * The crucial case is an assistant message carrying `toolCalls`: it must be
+ * emitted with an OpenAI `tool_calls` array (same ids), so the `tool` messages
+ * that follow are valid responses to it. Without this OpenAI 400s.
+ */
+export function toChatMessage(m: LLMMessage): Record<string, unknown> {
+  if (m.role === 'tool') {
+    return { role: 'tool', content: m.content, tool_call_id: m.toolCallId };
+  }
+  if (m.role === 'assistant' && m.toolCalls?.length) {
+    return {
+      role: 'assistant',
+      content: m.content || null,
+      tool_calls: m.toolCalls.map((tc) => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: JSON.stringify(tc.input) },
+      })),
+    };
+  }
+  return { role: m.role, content: m.content };
+}
 
 /**
  * OpenAI client over native fetch. Mirrors AnthropicClient so the agent loop and
@@ -24,12 +50,7 @@ export class OpenAIClient implements LLMClient {
   }
 
   private async chatCompletions(opts: ChatOptions): Promise<LLMResponse> {
-    const messages = opts.messages.map((m) => {
-      if (m.role === 'tool') {
-        return { role: 'tool' as const, content: m.content, tool_call_id: m.toolCallId };
-      }
-      return { role: m.role as 'system' | 'user' | 'assistant', content: m.content };
-    });
+    const messages = opts.messages.map(toChatMessage);
 
     const body: Record<string, unknown> = {
       model: this.model,

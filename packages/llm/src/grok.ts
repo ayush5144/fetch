@@ -1,4 +1,4 @@
-import { parseResponses, responsesBody } from './openai';
+import { parseResponses, responsesBody, toChatMessage } from './openai';
 import type { ChatOptions, LLMClient, LLMResponse, ToolCall } from './types';
 
 /**
@@ -33,12 +33,7 @@ export class GrokClient implements LLMClient {
   }
 
   private async chatCompletions(opts: ChatOptions): Promise<LLMResponse> {
-    const messages = opts.messages.map((m) => {
-      if (m.role === 'tool') {
-        return { role: 'tool' as const, content: m.content, tool_call_id: m.toolCallId };
-      }
-      return { role: m.role as 'system' | 'user' | 'assistant', content: m.content };
-    });
+    const messages = opts.messages.map(toChatMessage);
 
     const body: Record<string, unknown> = {
       model: this.model,

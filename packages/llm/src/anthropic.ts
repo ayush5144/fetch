@@ -27,6 +27,17 @@ export class AnthropicClient implements LLMClient {
             ],
           };
         }
+        // An assistant turn that called tools replays as content blocks: any
+        // text, then a `tool_use` block per call. The `id`s match the
+        // `tool_result.tool_use_id`s in the following user message.
+        if (m.role === 'assistant' && m.toolCalls?.length) {
+          const blocks: Record<string, unknown>[] = [];
+          if (m.content) blocks.push({ type: 'text', text: m.content });
+          for (const tc of m.toolCalls) {
+            blocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+          }
+          return { role: 'assistant' as const, content: blocks };
+        }
         return { role: m.role as 'user' | 'assistant', content: m.content };
       });
 

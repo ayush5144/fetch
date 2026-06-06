@@ -179,7 +179,10 @@ async function runLLMSource(
     });
 
     if (res.toolCalls.length > 0) {
-      messages.push({ role: 'assistant', content: res.text || '(calling tools)' });
+      // Replay the assistant turn WITH the calls it made — providers need the
+      // tool_calls on this message so the tool results below have a parent to
+      // reference (else OpenAI/Grok 400 on the orphaned `tool` message).
+      messages.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls });
       for (const call of res.toolCalls) {
         const tool = tmap.get(call.name);
         const output = tool
