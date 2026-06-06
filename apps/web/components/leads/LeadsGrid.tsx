@@ -65,6 +65,84 @@ function isRunnable(col: Column): boolean {
   return col.type === 'dogi' || col.type === 'enrichment' || col.type === 'agent';
 }
 
+// ── Synthetic flow (agent) columns ─────────────────────────────────────────────
+//
+// When `settings.agentColumn` is on, each saved flow gets a REAL in-grid column
+// (Clay's "Research company" style) inserted immediately before the flow's first
+// data column. It is NOT a DB column — we weave a sentinel `{ __flow }` into the
+// rendered column list and handle it in the <colgroup>, header, and body rows.
+
+/** A sentinel rendered column that is a flow's agent column (not a DB column). */
+interface FlowRenderCol { __flow: Flow }
+/** A rendered column is either a real DB column or a synthetic flow column. */
+type RenderColumn = Column | FlowRenderCol;
+
+function isFlowCol(c: RenderColumn): c is FlowRenderCol {
+  return (c as FlowRenderCol).__flow !== undefined;
+}
+
+/** Fixed width for the synthetic flow/agent column (no resize/reorder). */
+const FLOW_COL_WIDTH = 150;
+
+/**
+ * Weave each flow's synthetic agent column into the real column list, inserting
+ * it immediately before that flow's leftmost data column. When `agentColumn` is
+ * off (or there are no flows) the real columns are returned unchanged, so the
+ * grid renders exactly as before. Real columns keep their order and identity.
+ */
+function buildRenderColumns(columns: Column[], flows: Flow[], agentColumn: boolean): RenderColumn[] {
+  if (!agentColumn || flows.length === 0) return columns;
+  // For each flow, find the index of its leftmost data column in `columns`.
+  const insertBefore = new Map<number, Flow[]>();
+  for (const flow of flows) {
+    let firstIdx = -1;
+    for (let i = 0; i < columns.length; i++) {
+      if (flow.columnKeys.includes(columns[i].key)) { firstIdx = i; break; }
+    }
+    if (firstIdx < 0) continue; // flow has no visible data columns — skip its agent col
+    const list = insertBefore.get(firstIdx) ?? [];
+    list.push(flow);
+    insertBefore.set(firstIdx, list);
+  }
+  const out: RenderColumn[] = [];
+  for (let i = 0; i < columns.length; i++) {
+    const before = insertBefore.get(i);
+    if (before) for (const flow of before) out.push({ __flow: flow });
+    out.push(columns[i]);
+  }
+  return out;
+}
+
+/**
+ * Derive a flow's status for one lead from its data columns' cell states:
+ *   error  → any of the flow's columns errored or recorded a failure
+ *   running→ any queued/running
+ *   filled → every flow column has a value
+ *   empty  → none filled (and nothing running)
+ */
+function flowRowState(
+  lead: Lead,
+  flow: Flow,
+  columns: Column[],
+  jobs: CellJob[],
+): 'empty' | 'running' | 'filled' | 'error' {
+  const cols = columns.filter((c) => flow.columnKeys.includes(c.key));
+  if (cols.length === 0) return 'empty';
+  let anyRunning = false;
+  let anyError = false;
+  let filledCount = 0;
+  for (const col of cols) {
+    const s = cellState(lead, col, jobs);
+    if (s === 'running' || s === 'queued') anyRunning = true;
+    else if (s === 'error' || s === 'failed') anyError = true;
+    else if (s === 'filled') filledCount++;
+  }
+  if (anyError) return 'error';
+  if (anyRunning) return 'running';
+  if (filledCount === cols.length) return 'filled';
+  return 'empty';
+}
+
 /**
  * Who made / fills this column. Dogi columns self-identify by type; formula
  * likewise; a manual column Bone created carries `config.createdBy: 'bone'`;
@@ -239,7 +317,10 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
   // ── Run flow (Round 9) — pick a flow, confirm modal, result message
   const [flowMenu, setFlowMenu] = useState<DOMRect | null>(null);
   const [flowConfirm, setFlowConfirm] = useState<Flow | null>(null);
-  const [flowMore, setFlowMore] = useState('0');
+  // Append = fill empty/failed + (optionally) add rows (force:false, default
+  // rows=10). Replace = re-run & overwrite existing cells (force:true, rows=0).
+  const [flowMode, setFlowMode] = useState<'append' | 'replace'>('append');
+  const [flowMore, setFlowMore] = useState('10');
   const [flowBusy, setFlowBusy] = useState(false);
   const [flowMsg, setFlowMsg] = useState<string | null>(null);
 
@@ -502,26 +583,45 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
 
   // ── Run flow (Round 9) ──────────────────────────────────────────────────────
 
-  /** Open the confirm modal for a flow (resets the "add more rows" input). */
+  /**
+   * Open the confirm modal for a flow. Defaults to Append mode with "Rows to
+   * add" = 10 (Append is about filling empties and growing the table).
+   */
   function openFlowConfirm(flow: Flow) {
     setFlowMsg(null);
     setFlowMenu(null);
-    setFlowMore('0');
+    setFlowMode('append');
+    setFlowMore('10');
     setFlowConfirm(flow);
   }
 
-  /** Re-run the confirmed flow, optionally sourcing N more rows (clamped 0–50). */
+  /** Switch run mode and reset the row-count default for that mode. */
+  function setFlowModeWithDefault(mode: 'append' | 'replace') {
+    setFlowMode(mode);
+    // Append grows the table (default 10); Replace is about existing data (0).
+    setFlowMore(mode === 'append' ? '10' : '0');
+  }
+
+  /**
+   * Run the confirmed flow in the chosen mode:
+   * - Append → fill empty/failed cells (+ source `sourceMore` new rows), force:false.
+   * - Replace → re-run & overwrite existing cells, force:true.
+   * `sourceMore` is clamped 0–50; 0 means "add no rows".
+   */
   async function confirmRunFlow() {
     if (!flowConfirm || flowBusy) return;
+    const force = flowMode === 'replace';
     const n = Math.max(0, Math.min(50, Math.floor(Number(flowMore) || 0)));
     setFlowBusy(true);
     try {
       const res = await tablesApi.runFlow(tableId, flowConfirm.id, {
         sourceMore: n || undefined,
+        force,
       });
       setFlowConfirm(null);
+      const verb = force ? 'Replaced' : 'Appended';
       setFlowMsg(
-        `Re-ran ${res.columnsRun} column${res.columnsRun !== 1 ? 's' : ''}; ` +
+        `${verb} ${res.columnsRun} column${res.columnsRun !== 1 ? 's' : ''}; ` +
           `added ${res.rowsCreated} row${res.rowsCreated !== 1 ? 's' : ''}; ` +
           `${res.enqueued} cell${res.enqueued !== 1 ? 's' : ''} queued`,
       );
@@ -647,6 +747,21 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
       setTimeout(onRefreshLeads, 500);
     } catch (e) {
       console.error('re-run row failed', e);
+    }
+  }
+
+  /**
+   * Run (or re-run) every one of a flow's data columns for a single lead — used
+   * by the synthetic flow column's per-row ▷ Run / ↻ re-run. Reuses the existing
+   * per-cell run endpoint (`POST /leads/:id/run/:columnKey`) for each column.
+   */
+  async function runFlowForRow(lead: Lead, flow: Flow) {
+    const cols = columns.filter((c) => flow.columnKeys.includes(c.key));
+    try {
+      await Promise.all(cols.map((col) => runCell(lead, col)));
+      setTimeout(onRefreshLeads, 500);
+    } catch (e) {
+      console.error('run flow for row failed', e);
     }
   }
 
@@ -810,6 +925,13 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
   const flows = table?.settings?.flows ?? [];
   const agentColumn = Boolean(table?.settings?.agentColumn);
 
+  // The rendered column list: real DB columns with each flow's synthetic agent
+  // column woven in (only when `agentColumn` is on). Off by default → unchanged.
+  const renderColumns = buildRenderColumns(columns, flows, agentColumn);
+  // Width for a rendered column (synthetic flow cols use a fixed width).
+  const renderColWidth = (c: RenderColumn): number =>
+    isFlowCol(c) ? FLOW_COL_WIDTH : (colWidths[c.id] ?? DEFAULT_COL_WIDTH);
+
   return (
     <>
       {/* Toolbar */}
@@ -920,28 +1042,6 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
         </button>
       </div>
 
-      {/* Optional flow-agent control row (Round 9). Off by default — only when
-          settings.agentColumn is on AND the table has flows. A true value-less
-          grid column is awkward in this fixed grid structure (cells are derived
-          per row), so we render a compact flow chip with a ▷ pinned in this
-          header row instead. The ▷ runs the whole flow via the same confirm. */}
-      {agentColumn && flows.length > 0 && (
-        <div className="flow-agent-row" role="toolbar" aria-label="Flow agents">
-          <span className="flow-agent-row-label">Flow agents</span>
-          {flows.map((flow) => (
-            <button
-              key={flow.id}
-              className="flow-chip"
-              title={`Re-run the “${flow.name}” flow for all rows`}
-              onClick={() => openFlowConfirm(flow)}
-            >
-              <span className="flow-chip-name">{flow.name}</span>
-              <span className="flow-chip-run" aria-hidden>▷</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Scrollable grid. The table width is the sum of all column widths so
           columns keep a real width (never squish); past the viewport it scrolls
           horizontally, while the first two and the last column stay pinned. */}
@@ -953,15 +1053,19 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
               CHECK_W +
               NUM_W +
               ADD_W +
-              columns.reduce((sum, c) => sum + (colWidths[c.id] ?? DEFAULT_COL_WIDTH), 0),
+              renderColumns.reduce((sum, c) => sum + renderColWidth(c), 0),
           }}
         >
           <colgroup>
             <col className="grid-col-check" />
             <col className="grid-col-num" />
-            {columns.map((c) => (
-              <col key={c.id} style={{ width: colWidths[c.id] ?? DEFAULT_COL_WIDTH }} />
-            ))}
+            {renderColumns.map((c) =>
+              isFlowCol(c) ? (
+                <col key={`flow-${c.__flow.id}`} style={{ width: FLOW_COL_WIDTH }} />
+              ) : (
+                <col key={c.id} style={{ width: colWidths[c.id] ?? DEFAULT_COL_WIDTH }} />
+              ),
+            )}
             <col className="grid-col-add" />
           </colgroup>
           <thead>
@@ -982,21 +1086,41 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
               <th>
                 <div style={{ height: 36 }} />
               </th>
-              {/* User columns */}
-              {columns.map((col) => (
+              {/* User columns (real DB columns + synthetic flow agent columns) */}
+              {renderColumns.map((rc) =>
+                isFlowCol(rc) ? (
+                  <th key={`flow-${rc.__flow.id}`} className="grid-th-flow" style={{ width: FLOW_COL_WIDTH }}>
+                    <div className="grid-th-inner grid-th-flow-inner">
+                      <span className="grid-th-icon" aria-hidden>🐕</span>
+                      <span className="grid-th-flow-text">
+                        <span className="grid-th-label" title={rc.__flow.name}>{rc.__flow.name}</span>
+                        <span className="grid-th-flow-sub">agent</span>
+                      </span>
+                      <div className="grid-th-actions grid-th-flow-actions">
+                        <button
+                          className="grid-th-btn"
+                          title={`Run the “${rc.__flow.name}” flow for all rows`}
+                          onClick={(e) => { e.stopPropagation(); openFlowConfirm(rc.__flow); }}
+                        >
+                          ▷
+                        </button>
+                      </div>
+                    </div>
+                  </th>
+                ) : (
                 <th
-                  key={col.id}
+                  key={rc.id}
                   style={{
-                    width: colWidths[col.id] ?? DEFAULT_COL_WIDTH,
-                    outline: colDragOver === col.key ? '2px solid var(--accent)' : undefined,
+                    width: colWidths[rc.id] ?? DEFAULT_COL_WIDTH,
+                    outline: colDragOver === rc.key ? '2px solid var(--accent)' : undefined,
                   }}
                   draggable
-                  onDragStart={(e) => onColDragStart(e, col)}
-                  onDragOver={(e) => onColDragOver(e, col)}
-                  onDrop={(e) => onColDrop(e, col)}
+                  onDragStart={(e) => onColDragStart(e, rc)}
+                  onDragOver={(e) => onColDragOver(e, rc)}
+                  onDrop={(e) => onColDrop(e, rc)}
                   onDragEnd={onColDragEnd}
                   ref={(el) => {
-                    if (el && resizeState.current?.colId === col.id) {
+                    if (el && resizeState.current?.colId === rc.id) {
                       resizeState.current.el = el;
                     }
                   }}
@@ -1005,18 +1129,18 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                     className="grid-th-inner"
                     onMouseEnter={(e) => {
                       const r = e.currentTarget.getBoundingClientRect();
-                      setThTip({ col, x: r.left + r.width / 2, y: r.bottom + 6 });
+                      setThTip({ col: rc, x: r.left + r.width / 2, y: r.bottom + 6 });
                     }}
-                    onMouseLeave={() => setThTip((t) => (t?.col.id === col.id ? null : t))}
+                    onMouseLeave={() => setThTip((t) => (t?.col.id === rc.id ? null : t))}
                   >
-                    <span className="grid-th-icon">{columnIcon(col)}</span>
-                    <span className="grid-th-label">{col.label}</span>
+                    <span className="grid-th-icon">{columnIcon(rc)}</span>
+                    <span className="grid-th-label">{rc.label}</span>
                     <div className="grid-th-actions">
-                      {isRunnable(col) && (
+                      {isRunnable(rc) && (
                         <button
                           className="grid-th-btn"
                           title="Run column"
-                          onClick={(e) => { e.stopPropagation(); runColumn(col); }}
+                          onClick={(e) => { e.stopPropagation(); runColumn(rc); }}
                         >
                           ▷
                         </button>
@@ -1027,7 +1151,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = (e.target as HTMLElement).getBoundingClientRect();
-                          setColMenu({ col, rect });
+                          setColMenu({ col: rc, rect });
                         }}
                       >
                         ⋯
@@ -1038,12 +1162,13 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                       className="grid-resize-handle"
                       onMouseDown={(e) => {
                         const th = (e.target as HTMLElement).closest('th') as HTMLTableCellElement;
-                        onResizeStart(e, col, th);
+                        onResizeStart(e, rc, th);
                       }}
                     />
                   </div>
                 </th>
-              ))}
+                ),
+              )}
               {/* Add column */}
               <th className="grid-th-add">
                 <button
@@ -1104,25 +1229,33 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                       </button>
                     </div>
                   </td>
-                  {/* User columns */}
-                  {columns.map((col) => (
+                  {/* User columns (real cells + synthetic flow status cells) */}
+                  {renderColumns.map((rc) =>
+                    isFlowCol(rc) ? (
+                      <FlowCell
+                        key={`flow-${rc.__flow.id}`}
+                        flowState={flowRowState(lead, rc.__flow, columns, jobs)}
+                        onRun={() => runFlowForRow(lead, rc.__flow)}
+                      />
+                    ) : (
                     <GridCell
-                      key={col.id}
+                      key={rc.id}
                       lead={lead}
-                      col={col}
+                      col={rc}
                       jobs={jobs}
-                      editing={editCell?.leadId === lead.id && editCell?.key === col.key}
+                      editing={editCell?.leadId === lead.id && editCell?.key === rc.key}
                       editValue={editValue}
                       editError={editError}
                       editInputRef={editInputRef}
-                      onStartEdit={() => startEdit(lead, col)}
+                      onStartEdit={() => startEdit(lead, rc)}
                       onEditChange={(v) => { setEditValue(v); setEditError(null); }}
-                      onCommit={() => commitEdit(lead, col)}
+                      onCommit={() => commitEdit(lead, rc)}
                       onCancel={cancelEdit}
-                      onRun={() => runCell(lead, col)}
-                      onPeek={() => setPeek({ lead, col })}
+                      onRun={() => runCell(lead, rc)}
+                      onPeek={() => setPeek({ lead, col: rc })}
                     />
-                  ))}
+                    ),
+                  )}
                   {/* Add column empty cell */}
                   <td style={{ background: 'var(--surface)' }} />
                 </tr>
@@ -1131,7 +1264,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
 
             {displayLeads.length === 0 && (
               <tr>
-                <td colSpan={columns.length + 3}>
+                <td colSpan={renderColumns.length + 3}>
                   <div className="empty">
                     <div className="empty-icon">☰</div>
                     {q
@@ -1360,10 +1493,10 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
         </>
       )}
 
-      {/* Run-flow confirm modal */}
+      {/* Run-flow confirm modal — choose Append vs Replace + rows to add */}
       {flowConfirm && (
         <Modal
-          title="Re-run flow"
+          title="Run flow"
           maxWidth={460}
           onClose={() => { if (!flowBusy) setFlowConfirm(null); }}
           footer={
@@ -1372,17 +1505,47 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
                 Cancel
               </button>
               <button className="btn btn-accent" disabled={flowBusy} onClick={confirmRunFlow}>
-                {flowBusy ? 'Running…' : 'Run flow'}
+                {flowBusy ? 'Running…' : flowMode === 'replace' ? 'Replace' : 'Append'}
               </button>
             </>
           }
         >
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-soft)' }}>
-            Re-run <strong>{flowConfirm.name}</strong> — this will run{' '}
-            <strong>{flowConfirm.columnKeys.join(', ') || 'its columns'}</strong> for all rows.
+            Run <strong>{flowConfirm.name}</strong> — this fills{' '}
+            <strong>{flowConfirm.columnKeys.join(', ') || 'its columns'}</strong> across the table.
           </p>
+
+          <div className="flow-mode" role="radiogroup" aria-label="Run mode">
+            <label className={`flow-mode-opt${flowMode === 'append' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="flow-mode"
+                checked={flowMode === 'append'}
+                disabled={flowBusy}
+                onChange={() => setFlowModeWithDefault('append')}
+              />
+              <span className="flow-mode-body">
+                <span className="flow-mode-title">Append</span>
+                <span className="flow-mode-help">Fill empty &amp; failed cells, and optionally add new rows.</span>
+              </span>
+            </label>
+            <label className={`flow-mode-opt${flowMode === 'replace' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="flow-mode"
+                checked={flowMode === 'replace'}
+                disabled={flowBusy}
+                onChange={() => setFlowModeWithDefault('replace')}
+              />
+              <span className="flow-mode-body">
+                <span className="flow-mode-title">Replace</span>
+                <span className="flow-mode-help">Re-run every cell and overwrite existing values.</span>
+              </span>
+            </label>
+          </div>
+
           <label className="flow-more-field">
-            <span className="flow-more-label">Add N more rows</span>
+            <span className="flow-more-label">Rows to add</span>
             <input
               className="input"
               type="number"
@@ -1393,7 +1556,7 @@ export function LeadsGrid({ tableId, table, leads, columns, jobs, onRefreshLeads
               onChange={(e) => setFlowMore(e.target.value)}
               style={{ width: 96 }}
             />
-            <span className="muted" style={{ fontSize: 12 }}>0 = none (max 50)</span>
+            <span className="muted" style={{ fontSize: 12 }}>0 = just fill (max 50)</span>
           </label>
         </Modal>
       )}
@@ -1651,6 +1814,71 @@ function GridCell({
     <td onClick={onStartEdit} style={{ cursor: 'text' }}>
       <div className="grid-cell">
         <span className="grid-cell-value is-muted">—</span>
+      </div>
+    </td>
+  );
+}
+
+// ── FlowCell ────────────────────────────────────────────────────────────────────
+//
+// The synthetic flow column's per-row status cell. Mirrors the cell-state visual
+// language: a calm ✓ Done pill when every flow column is filled, a ⚠ + ↻ re-run
+// when any failed/errored, the spinner/pulse while running, and a ▷ Run when the
+// flow hasn't been run for this row yet.
+
+interface FlowCellProps {
+  flowState: 'empty' | 'running' | 'filled' | 'error';
+  /** Run (or re-run) all of the flow's columns for this row. */
+  onRun: () => void;
+}
+
+function FlowCell({ flowState, onRun }: FlowCellProps) {
+  if (flowState === 'running') {
+    return (
+      <td className="grid-td-flow">
+        <div className="grid-cell">
+          <div className="grid-cell-spinner" />
+          <span className="grid-cell-queued">Running…</span>
+        </div>
+      </td>
+    );
+  }
+
+  if (flowState === 'error') {
+    return (
+      <td className="grid-td-flow">
+        <div className="grid-cell">
+          <span className="grid-cell-failed">⚠</span>
+          <button
+            className="grid-cell-run"
+            style={{ opacity: 1 }}
+            title="Re-run this flow for this row"
+            onClick={(e) => { e.stopPropagation(); onRun(); }}
+          >
+            ↻
+          </button>
+        </div>
+      </td>
+    );
+  }
+
+  if (flowState === 'filled') {
+    return (
+      <td className="grid-td-flow">
+        <div className="grid-cell">
+          <span className="pill pill-green flow-cell-done">✓ Done</span>
+        </div>
+      </td>
+    );
+  }
+
+  // empty — not yet run for this row
+  return (
+    <td className="grid-td-flow">
+      <div className="grid-cell">
+        <button className="grid-cell-run" onClick={(e) => { e.stopPropagation(); onRun(); }}>
+          ▷ Run
+        </button>
       </div>
     </td>
   );

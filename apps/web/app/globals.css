@@ -648,42 +648,49 @@ table.tbl {
   color: var(--ink);
 }
 
-/* Optional flow-agent chip row (Round 9). A compact, on-brand strip under the
-   toolbar; each chip's ▷ re-runs the whole flow. Off by default. */
-.flow-agent-row {
+/* Run-flow modal: Append vs Replace mode picker. */
+.flow-mode {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  flex-wrap: wrap;
-  padding: 0 0 10px;
+  margin-top: 14px;
 }
-.flow-agent-row-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-.flow-chip {
-  display: inline-flex;
-  align-items: center;
+.flow-mode-opt {
+  display: flex;
+  align-items: flex-start;
   gap: 8px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-family: inherit;
-  color: var(--ink-soft);
-  background: var(--surface);
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: border-color 0.1s ease, color 0.1s ease;
+  transition: border-color 0.1s ease, background 0.1s ease;
 }
-.flow-chip:hover {
+.flow-mode-opt:hover {
+  border-color: var(--border-strong);
+}
+.flow-mode-opt.is-active {
   border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.flow-mode-opt input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.flow-mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-mode-title {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--ink);
 }
-.flow-chip-run {
-  color: var(--accent-ink);
-  font-size: 11px;
+.flow-mode-help {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 /* Per-table settings modal rows. */
@@ -1205,6 +1212,41 @@ table.grid-tbl {
   border-radius: 999px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* Synthetic flow (agent) column — a real in-grid column for a saved Bone flow.
+   Tinted to read as a derived/agent column, on-brand with the accent. */
+.grid-th-flow {
+  background: var(--accent-soft) !important;
+}
+.grid-th-flow-inner {
+  gap: 6px;
+}
+.grid-th-flow-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.1;
+}
+.grid-th-flow-sub {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.grid-th-flow-actions {
+  opacity: 1; /* the run ▷ is the column's primary action — always visible */
+}
+.grid-tbl tbody td.grid-td-flow {
+  background: var(--accent-soft);
+}
+.grid-tbl tbody tr:hover td.grid-td-flow {
+  background: var(--accent-soft);
+}
+.flow-cell-done {
+  font-size: 11px;
 }
 
 /* Inline edit input */
