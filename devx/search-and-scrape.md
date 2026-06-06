@@ -165,5 +165,118 @@ The new env vars live in the zod schema at `packages/core/src/env.ts`
 (`OPENSERP_URL`, `OPENSERP_ENGINE`, `FIRECRAWL_API_URL` added alongside the
 existing `SERPER_API_KEY` / `FIRECRAWL_API_KEY`).
 
+## 9. The full pipeline, end to end (chart)
+
+How one Dogi cell gets filled from real web data. The API only enqueues; the
+**worker** runs the research loop; OpenSERP + Firecrawl are separate self-hosted
+services; every value lands back with provenance.
+
+```
+  USER / BONE                      API (Hono)                 QUEUE (pg-boss, in Postgres)
+  ───────────                      ──────────                 ────────────────────────────
+  run column / cell  ───────────►  POST .../run  ──enqueue──►  job: { leadId, columnKey }
+  (sources: web:external,                                            │
+           scrape, llm)                                              ▼
+                                                            WORKER  enrich handler
+                                                            ────────────────────────
+                                                            1. load lead + column.config
+                                                            2. run-only-if-empty guard
+                                                            3. runDogi(config, lead)
+                                                                     │
+        ┌────────────────────────── runDogi · per source (policy: combine | first) ──────────────────────────┐
+        │                                                                                                     │
+        │   leadContext(lead)  +  instruction                                                                 │
+        │        │                                                                                            │
+        │        ▼                                                                                            │
+        │   ┌─────────────────────────── runLLMSource : the RESEARCH LOOP (≤ maxSteps) ────────────────────┐ │
+        │   │                                                                                               │ │
+        │   │   LLM.chat(messages, tools=[web_search, scrape_url])                                          │ │
+        │   │        │                                                                                      │ │
+        │   │        ├─ model emits tool_call: web_search("Hero MotoCorp CEO")                              │ │
+        │   │        │        │                                                                             │ │
+        │   │        │        ▼                                                                             │ │
+        │   │        │   webSearch.ts ──HTTP──►  OPENSERP  (self-hosted :7001)  ──►  [{title,link,snippet}] │ │
+        │   │        │        │                  (engine: google | yandex | …)                              │ │
+        │   │        │        ▼                                                                             │ │
+        │   │        │   push assistant{tool_calls} + tool{result}  ◄── THE FIX (see §10)                   │ │
+        │   │        │                                                                                      │ │
+        │   │        ├─ model emits tool_call: scrape_url("https://…moneycontrol…")                         │ │
+        │   │        │        │                                                                             │ │
+        │   │        │        ▼                                                                             │ │
+        │   │        │   scrapeUrl.ts ──HTTP──►  FIRECRAWL  (self-hosted :3002)  ──►  clean markdown         │ │
+        │   │        │        │                                                                             │ │
+        │   │        │        ▼                                                                             │ │
+        │   │        │   push assistant{tool_calls} + tool{markdown}                                        │ │
+        │   │        │                                                                                      │ │
+        │   │        └─ model returns FINAL: { "value":"Harshavardhan Chitale",                             │ │
+        │   │                                  "confidence":0.9, "source":"https://…moneycontrol…" }        │ │
+        │   └───────────────────────────────────────────────────────────────────────────────────────────┘ │
+        │                                                                                                     │
+        └──────────────────────────────── mergeResults (combine) / first-confident ───────────────────────────┘
+                                                            │
+                                                            ▼
+                                            writeCell:  data[col] = value
+                                                        enrichmentConf[col] = { status:'filled',
+                                                                                confidence, source, provider }
+                                            (miss → writeCellFailure: status:'failed', error)   ← §R2 visibility
+```
+
+Key properties: **async** (API never blocks — the worker does the slow loop);
+**bounded** (`maxSteps`, default 6); **graceful** (a missing/`captcha`'d backend
+returns a non-fatal tool message, the loop continues); **provenance on every
+cell** (value + confidence + the **source URL** the model actually used); and the
+backends are **swappable by env** (OpenSERP↔Serper, self-hosted↔hosted Firecrawl)
+with the normalized tool output identical, so the loop never changes.
+
+## 10. Why enrichment wasn't working earlier (the bugs, in detail)
+
+Four independent problems stacked up; live testing (not unit tests) surfaced each.
+
+1. **The research loop never completed on OpenAI — the big one.** The multi-step
+   tool loop replayed the assistant turn that *made* the tool calls **without** its
+   `tool_calls`, so the follow-up `tool` result message was orphaned and OpenAI
+   rejected the whole request:
+   > `400 — messages with role 'tool' must be a response to a preceding message with 'tool_calls'.`
+   - **Root cause:** `LLMMessage` had no field to carry an assistant's tool calls;
+     `dogi.ts` pushed `{role:'assistant', content}` (calls dropped); `openai.ts`
+     serialized assistant messages as `{role, content}` only.
+   - **Effect:** *any* Dogi using `web:external` + `scrape` (the function-calling
+     loop) failed every time — so OpenSERP/Firecrawl could never fill a cell.
+     (Cells that *did* fill used `web:native` or pure `llm`, which don't use the
+     loop — masking the bug.)
+   - **Fix:** `LLMMessage.toolCalls?`; `dogi.ts` replays the assistant message
+     **with** `res.toolCalls`; each provider serializes the replay in its own
+     shape — OpenAI/Grok `tool_calls[]` + `tool_call_id`, Anthropic
+     `tool_use`/`tool_result`, Gemini `functionCall`/`functionResponse` —
+     covered by `packages/llm/test/toolReplay.test.ts`.
+   - **Verified live after the fix:** "Hero MotoCorp" → CEO **Harshavardhan
+     Chitale** with a real **moneycontrol.com** source, provider
+     `web:external+scrape`, no 400.
+
+2. **The research prompt made pure-LLM columns refuse.** One system prompt
+   (*"Never guess… return null if not found"*) is right for research but tells a
+   *transform* column (summarize/derive) to return `null`. Split into
+   `SYSTEM_RESEARCH` (tools on) vs `SYSTEM_TRANSFORM` (LLM-only). (See
+   `dogi-agent.md` §12.)
+
+3. **Weak model + no fallback.** Columns had no `brain`, so they fell back to
+   `gpt-4o-mini`'s native search — it fires but returns thin results, and there was
+   **no external search / scrape** behind it (Serper/Firecrawl unkeyed). This whole
+   doc (OpenSERP + self-hosted Firecrawl) is the fallback. Model quality stays a
+   per-Dogi `brain` choice.
+
+4. **No anchor → garbage answer.** A row with no reference data (e.g. a `company`
+   that was silently dropped by the fixed-schema quick-add path) gives the model
+   nothing to look up, so it free-associates ("Fetch" → the wrong CEO). The fix is
+   the **arbitrary-columns** rework (any field is stored + surfaced to Dogi) — see
+   [multi-table.md](./multi-table.md) / the data-model plan. Separately,
+   **per-cell failure visibility** (§R2) now shows a ⚠ + reason + re-run so a miss
+   is never silent.
+
+**Net:** the search/scrape backends were wired correctly, but the *loop* (1) and
+the *anchor* (4) were the real blockers. Both are fixed; (3) is mitigated by this
+stack; (4)'s data-model rework is the next build.
+
 Related: [dogi-agent.md](./dogi-agent.md) (the research loop + sources),
-[providers-and-keys.md](./providers-and-keys.md), [doggo.md](./doggo.md).
+[providers-and-keys.md](./providers-and-keys.md), [doggo.md](./doggo.md),
+[RUN-search-stack.md](./RUN-search-stack.md) (how to run the services).
