@@ -65,6 +65,36 @@ function isRunnable(col: Column): boolean {
   return col.type === 'dogi' || col.type === 'enrichment' || col.type === 'agent';
 }
 
+/**
+ * Who made / fills this column. Dogi columns self-identify by type; formula
+ * likewise; a manual column Bone created carries `config.createdBy: 'bone'`;
+ * everything else is a plain user column.
+ */
+function columnProvenance(col: Column): 'User' | 'Dogi' | 'Bone' | 'Formula' {
+  if (col.type === 'dogi' || col.type === 'enrichment' || col.type === 'agent') return 'Dogi';
+  if (col.type === 'formula') return 'Formula';
+  if (col.config?.createdBy === 'bone') return 'Bone';
+  return 'User';
+}
+
+const VALUE_TYPE_LABELS: Record<string, string> = {
+  text: 'Text',
+  email: 'Email',
+  url: 'URL',
+  number: 'Number',
+  date: 'Date',
+  select: 'Select',
+  checkbox: 'Checkbox',
+};
+
+/** A friendly value-type name for the column (falls back to a Text-ish label). */
+function valueTypeLabel(col: Column): string {
+  const vt = col.config?.valueType;
+  if (vt && VALUE_TYPE_LABELS[vt]) return VALUE_TYPE_LABELS[vt];
+  if (col.type === 'formula') return 'Formula';
+  return 'Text';
+}
+
 /** Validate a raw string value against a column's valueType. Returns error or null. */
 function validateValue(raw: string, col: Column): string | null {
   const vt = col.config?.valueType;
@@ -867,7 +897,10 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
                     }
                   }}
                 >
-                  <div className="grid-th-inner">
+                  <div
+                    className="grid-th-inner"
+                    title={`${valueTypeLabel(col)} · by ${columnProvenance(col)}`}
+                  >
                     <span className="grid-th-icon">{columnIcon(col)}</span>
                     <span className="grid-th-label">{col.label}</span>
                     <div className="grid-th-actions">
@@ -1034,6 +1067,8 @@ export function LeadsGrid({ tableId, leads, columns, jobs, onRefreshLeads, onRef
           anchorRect={colMenu.rect}
           columnKey={colMenu.col.key}
           columnLabel={colMenu.col.label}
+          provenance={columnProvenance(colMenu.col)}
+          valueTypeLabel={valueTypeLabel(colMenu.col)}
           isRunnable={isRunnable(colMenu.col)}
           isProtected={Boolean(colMenu.col.config?.protected)}
           onRun={() => runColumn(colMenu.col)}

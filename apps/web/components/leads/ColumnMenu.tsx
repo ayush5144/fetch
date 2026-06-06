@@ -19,6 +19,10 @@ interface Props {
   anchorRect: DOMRect;
   columnKey: string;
   columnLabel: string;
+  /** Who made / fills this column — shown in the info header line. */
+  provenance: 'User' | 'Dogi' | 'Bone' | 'Formula';
+  /** Friendly value-type name — shown in the info header line. */
+  valueTypeLabel: string;
   isRunnable: boolean;
   /** When true the Delete option is hidden (protected column). */
   isProtected?: boolean;
@@ -40,6 +44,8 @@ interface Props {
 
 export function ColumnMenu({
   anchorRect,
+  provenance,
+  valueTypeLabel,
   isRunnable,
   isProtected,
   onRun,
@@ -81,6 +87,10 @@ export function ColumnMenu({
     <>
       <div className="col-menu-backdrop" onClick={onClose} />
       <div className="col-menu" style={{ top, left }} role="menu">
+        {/* Provenance + value-type info line (non-interactive). */}
+        <div className="col-menu-info">
+          by {provenance} · {valueTypeLabel}
+        </div>
         {isRunnable && (
           <>
             {/* Cost estimate pill — shown above run actions */}
