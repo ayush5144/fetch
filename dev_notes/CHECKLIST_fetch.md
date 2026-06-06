@@ -488,7 +488,7 @@ A Fetch table is **arbitrary columns**; the legacy fixed identity fields (`first
 - [x] `/jobs` + `/jobs/summary` show real pg-boss status (grouped); `/activity` shows real `audit_log` (incl. `enrich_failed`). Confirmed functional — the only front/back gap is the R3 frontend item above.
 
 ### Round 4 — Rename Bone → Bone (LAST, after the above works)
-- [ ] Rename across code identifiers (`bone`→`bone`), routes (`/tables/:id/bone/*` → `/bone/*`), UI ("Ask Bone" → "Ask Bone"), and docs (`bone.md` → `bone.md`, all references). Keep Dogi as the cell agent.
+- [x] Rename across code identifiers (`bone`→`bone`), routes (`/tables/:id/bone/*` → `/bone/*`), UI ("Ask Bone" → "Ask Bone"), and docs (`bone.md` → `bone.md`, all references). Keep Dogi as the cell agent.
   - Test: full suite green; "Ask Bone" plans+runs end-to-end; no stray "bone" left.
 
 ## Ship Gate (Clay/Dogi direction)
