@@ -441,6 +441,43 @@ The headline gap: the planner only enriches existing rows; nothing **creates** r
   - Test: read-only registry exposes only the 6 read tools; read-write adds the 10 writes; bearer set when token present (unit-tested).
 - [ ] Fetch as MCP client: register an external MCP server; enable it per Dogi as an extra tool — *deferred (inbound direction).* 
 
+## Phase J - Reliability round: Doggo correctness, failure visibility, self-hosted search, Bone rename
+
+From the 2026-06-06 review #2 (two real Doggo runs gave partial results). Diagnosis in `devx/doggo.md` + `devx/search-and-scrape.md`. Build in rounds; test + commit each; push per round after the user sees it work.
+
+### Round 1 — Doggo row-sourcing correctness (backend + frontend)
+- [ ] **Create a column for the sourced primary field.** A source-rows step must materialize a column for `primaryField` (e.g. "Company") so the sourced values are visible — not just written into `data`. (This is why "5 automobile companies + CEO + LinkedIn" made only 2 columns, not 3.)
+  - Test: `/doggo/run` on a "top N companies + …" plan creates a `company` column + the enrichment columns; the grid shows company names.
+- [ ] **Reuse the seeded blank row** instead of appending. When Doggo sources N rows and the table has only the single default blank row, fill/replace it rather than ending up with N+1 and a guaranteed-failing empty row.
+  - Test: new table (1 blank row) + source 5 → exactly 5 rows, none blank.
+- [ ] **Exact count.** Row-sourcing returns exactly the requested count (cap 50); if the model returns more/fewer, trim/pad-by-reprompt to hit the number (or report the shortfall).
+  - Test: ask 10 → 10 rows (±0), not 11.
+- [ ] **Better entity quality.** Tighten the sourcing prompt so "AI companies" yields real companies (OpenAI, Anthropic, Nvidia…), not divisions/products ("Google AI", "Salesforce Einstein").
+  - Test (judgment): a sourced list contains companies that have a single identifiable CEO.
+
+### Round 2 — Failure visibility + re-run (the core UX gap)
+- [ ] **Per-cell status**, not per-lead. Record each cell's outcome (`filled` | `empty` | `failed`+reason) so a cell that ran-and-missed is distinct from never-run. Stop `enrichmentStatus` being a single last-writer-wins field.
+  - Test: a lead with CEO filled + LinkedIn missed shows the CEO cell filled and the LinkedIn cell failed — not the whole row "failed".
+- [ ] **Failed-cell UI**: a red/amber marker + reason ("couldn't find") on cells that ran and failed; a **Re-run cell** and **Re-run row** action.
+  - Test: a failed cell shows the marker; Re-run re-enqueues just that cell.
+- [ ] **Audit failures.** A Dogi miss writes an `audit_log` entry (action `enrich_failed`, with the field + reason) so it appears in `/activity` and isn't silently "completed" in `/jobs`.
+  - Test: a missed cell appears in `/activity` with a failure action.
+- [ ] **Ask Doggo result summary**: report rows created + per-column fill counts + how many cells failed, so the user sees the outcome, not just "queued".
+
+### Round 3 — Self-hosted search & scrape (OpenSERP + Firecrawl). Design: `devx/search-and-scrape.md`
+- [ ] **`webSearch.ts`**: add an **OpenSERP** backend; precedence `OPENSERP_URL` → `SERPER_API_KEY` → unavailable. Normalize results to the existing shape.
+  - Test (unit): backend selected by env; OpenSERP response parsed to `{url,title,description}[]`.
+- [ ] **`scrapeUrl.ts`**: support a **self-hosted Firecrawl** via `FIRECRAWL_API_URL`; precedence `FIRECRAWL_API_URL` → `FIRECRAWL_API_KEY` → unavailable.
+- [ ] **`GET /settings`**: report `openserp` + `firecrawl_selfhosted` availability; **frontend** shows the backend in use and gates the per-Dogi web/scrape toggles with a hint when down.
+- [ ] **Install + run the services** (in this environment): OpenSERP (`docker run -p 7000:7000 karust/openserp serve -a 0.0.0.0 -p 7000`) and self-hosted Firecrawl (its docker-compose). Set `OPENSERP_URL` / `FIRECRAWL_API_URL`.
+- [ ] **`.env.example`** + an **opt-in compose `search` profile**; keep `scripts/dev.sh` baseline lean (Postgres only).
+- [ ] **Document** in `devx/search-and-scrape.md` (mark "as built"): how each service runs, ports, env, when each is called in the research loop, and how a user enables/disables them per Dogi.
+- [ ] **Live verify**: a Dogi with web+scrape on fills a CEO/LinkedIn cell **with a real source URL** sourced via OpenSERP (+ Firecrawl when a page read is needed).
+
+### Round 4 — Rename Doggo → Bone (LAST, after the above works)
+- [ ] Rename across code identifiers (`doggo`→`bone`), routes (`/tables/:id/doggo/*` → `/bone/*`), UI ("Ask Doggo" → "Ask Bone"), and docs (`doggo.md` → `bone.md`, all references). Keep Dogi as the cell agent.
+  - Test: full suite green; "Ask Bone" plans+runs end-to-end; no stray "doggo" left.
+
 ## Ship Gate (Clay/Dogi direction)
 
 - [ ] Create a table, add leads, and operate it like a spreadsheet (inline +column, edit any field, drag/resize/reorder, add row)
