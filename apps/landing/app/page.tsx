@@ -26,7 +26,7 @@ export default function LandingPage() {
     <div className="landing">
       <LandingNav />
       <section className="landing-inner landing-hero">
-        <span className="landing-eyebrow">Open source · self-hostable · bring your own keys</span>
+        <span className="landing-eyebrow">Open source · self-hostable · BYOK</span>
         <h1 className="landing-title">The spreadsheet where every column is an AI agent</h1>
         <p className="landing-lede">
           Fetch is a multi-table workspace for research and outreach. Each column is a reusable

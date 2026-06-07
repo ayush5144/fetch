@@ -26,7 +26,7 @@ export function LandingNav() {
     <header className="landing-nav">
       <div className="landing-nav-inner">
         <Link href="/" className="landing-nav-brand" onClick={close}>
-          Fetch <span aria-hidden>🐕</span>
+          Fetch
         </Link>
 
         {/* Inline links — shown on wide screens, hidden below the breakpoint. */}
