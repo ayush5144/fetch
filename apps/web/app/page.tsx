@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LandingNav } from '@/components/LandingNav';
 
 const GITHUB = 'https://github.com/ayush5144/fetch';
 
@@ -24,6 +25,7 @@ const FEATURES: { title: string; body: string }[] = [
 export default function LandingPage() {
   return (
     <div className="landing">
+      <LandingNav />
       <section className="landing-inner landing-hero">
         <div className="landing-mark">Fetch 🐕</div>
         <h1 className="landing-title">Open-source, self-hostable Clay</h1>
@@ -51,7 +53,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-inner landing-features">
+      <section id="features" className="landing-inner landing-features">
         {FEATURES.map((f) => (
           <div
             key={f.title}
