@@ -93,6 +93,24 @@
      (`pnpm -r build`, dist gitignored, lockfile committed) — the failure was
      Vercel compiling code it shouldn't, not a real code bug.
 
+## Vercel deploy — the canonical setup (2026-06-07)
+
+10. **✅ Deploy the standalone landing from `apps/landing`.** The public landing
+    lives in its **own minimal Next app** (`apps/landing`) — only
+    `next`/`react`/`react-dom`, **zero `@fetch/*`/workspace deps**, one `/` route,
+    builds in ~2s. This is the Vercel target.
+    - **Vercel project settings:** **Root Directory = `apps/landing`**, framework
+      **auto-detected (Next.js)**, leave install/build/output at **defaults** (do
+      NOT override). Vercel installs the pnpm workspace from the repo root and runs
+      `next build` in `apps/landing` — the backend is never compiled. No env vars
+      needed (the landing makes no API calls).
+    - **Do NOT use a root `vercel.json`.** A Copilot-era
+      `{ buildCommand: "cd apps/landing && …", outputDirectory: "apps/landing/.next" }`
+      forced a root build and broke detection ("No Next.js detected" / wrong Next
+      output). Deleted — the Root Directory setting replaces it entirely.
+    - `apps/web` is the full OS (landing at `/`, dashboard at `/fetch`) for local
+      dev / self-hosting; `apps/landing` is just the marketing page to deploy.
+
 ## Landing page + `/fetch` routing (2026-06-07)
 
 9. **✅ Public landing at `/`, OS moved under `/fetch/*`.**
