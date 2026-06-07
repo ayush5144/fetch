@@ -92,3 +92,35 @@
    - Note: the full monorepo DOES build clean locally from a clean state
      (`pnpm -r build`, dist gitignored, lockfile committed) — the failure was
      Vercel compiling code it shouldn't, not a real code bug.
+
+## Landing page + `/fetch` routing (2026-06-07)
+
+9. **✅ Public landing at `/`, OS moved under `/fetch/*`.**
+   - `/` is now a marketing landing (`app/page.tsx` + `components/LandingNav.tsx`),
+     no sidebar — root `layout.tsx` is minimal (html/body + globals.css).
+   - The whole dashboard moved from the `(os)` route group to a real `fetch`
+     segment: `app/fetch/page.tsx` (Overview), `app/fetch/{leads,agents,accounts,
+     analytics,campaigns,inbox,jobs,prompts,settings,activity}`, with the shell in
+     `app/fetch/layout.tsx` (renders `Sidebar` + `.main`). URLs: `/fetch`,
+     `/fetch/leads?table=…`, etc.
+   - **Navigation that had to move with it:** `Sidebar.tsx` nav hrefs all carry the
+     `/fetch` prefix and `isActive` treats `/fetch` as the exact Overview match;
+     the sidebar brand + Overview table links point to `/` and `/fetch/leads`.
+     **API call strings (`api.post('/tables')`, `useApi('/analytics/overview')`)
+     are NOT prefixed** — only page navigation (`Link href` / `router.push`) is.
+   - **Navbar** is a regular **sticky** bar (`position: sticky; top: 0`), not the
+     earlier floating/transparent pill, and not a button-laden header. It is
+     **responsive**: inline links on wide screens, and below 640px they collapse
+     into a hamburger that opens a right-side **drawer** (dimmed backdrop, slides
+     in; closes on link/backdrop click). `LandingNav.tsx` is a client component
+     holding the open state; the drawer/hamburger CSS lives under
+     `.landing-nav-toggle` / `.landing-drawer*` in `globals.css`.
+   - **Landing layout:** `.landing-inner` owns the single horizontal gutter
+     (32px, 20px on mobile); each section sets **only vertical** padding so the
+     gutter is never clobbered (an earlier `padding: Xpx 0 Ypx` shorthand zeroed
+     the sides and made content touch the screen edge). Copy uses plain hyphens,
+     not em dashes.
+   - **Gotcha (caused a false "all my data is gone" scare):** moving routes leaves
+     a **stale `apps/web/.next`** → 500s / wrong pages / "broken navigation". Fix:
+     `rm -rf apps/web/.next` and restart `pnpm --filter @fetch/web dev`. The data
+     was never touched — `/` just stopped being the dashboard.

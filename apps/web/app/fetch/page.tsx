@@ -108,7 +108,7 @@ export default function OverviewPage() {
                   <tr key={t.id}>
                     <td>
                       <Link
-                        href={`/leads?table=${t.id}`}
+                        href={`/fetch/leads?table=${t.id}`}
                         className="row"
                         style={{ gap: 8, textDecoration: 'none' }}
                       >
@@ -293,7 +293,7 @@ function NewTableModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
       const { table } = await api.post<{ table: Table }>('/tables', { name, description });
       onDone();
       onClose();
-      router.push(`/leads?table=${table.id}`);
+      router.push(`/fetch/leads?table=${table.id}`);
     } finally {
       setBusy(false);
     }

@@ -1782,41 +1782,32 @@ table.grid-tbl {
 }
 .landing-inner {
   width: 100%;
-  max-width: 920px;
+  max-width: 940px;
   margin: 0 auto;
-  padding: 0 24px;
+  /* Single source of the side gutter — section classes below set ONLY vertical
+     padding so they never clobber this and let content touch the screen edge. */
+  padding-left: 32px;
+  padding-right: 32px;
 }
 
-/* Floating, scroll-aware navbar (scubasearch-style pill, on Fetch tokens). */
+/* Regular top navbar — solid bar with a hairline bottom border (Fetch tokens). */
 .landing-nav {
-  position: fixed;
-  top: 14px;
-  left: 0;
-  right: 0;
+  position: sticky;
+  top: 0;
   z-index: 50;
-  display: flex;
-  justify-content: center;
-  padding: 0 16px;
-  pointer-events: none;
+  width: 100%;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
-.landing-nav-pill {
-  pointer-events: auto;
+.landing-nav-inner {
   width: 100%;
   max-width: 920px;
-  height: 52px;
+  margin: 0 auto;
+  height: 60px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 0 20px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.landing-nav.is-scrolled .landing-nav-pill {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(10px);
-  border-color: var(--border);
-  box-shadow: var(--shadow);
 }
 .landing-nav-brand {
   font-size: 17px;
@@ -1840,42 +1831,120 @@ table.grid-tbl {
 .landing-nav-link:hover {
   color: var(--ink);
 }
-@media (max-width: 560px) {
+
+/* Hamburger button — hidden on desktop, revealed at the mobile breakpoint. */
+.landing-nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.landing-nav-toggle span {
+  display: block;
+  width: 17px;
+  height: 2px;
+  margin: 0 auto;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+/* Mobile slide-in drawer + backdrop. Hidden entirely on desktop; the media
+   query below flips them on. `.is-open` is toggled from LandingNav. */
+.landing-drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 20, 35, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.landing-drawer-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.landing-drawer {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 61;
+  height: 100%;
+  width: min(78vw, 280px);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.12);
+  padding: 76px 18px 22px;
+  flex-direction: column;
+  gap: 4px;
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+}
+.landing-drawer.is-open {
+  transform: translateX(0);
+}
+.landing-drawer-link {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 12px;
+  border-radius: 9px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.landing-drawer-link:hover {
+  background: var(--bg);
+  color: var(--accent-ink);
+}
+
+@media (max-width: 640px) {
   .landing-nav-links {
-    gap: 12px;
-  }
-  .landing-nav-link {
     display: none;
+  }
+  .landing-nav-toggle {
+    display: flex;
+  }
+  .landing-drawer-backdrop {
+    display: block;
+  }
+  .landing-drawer {
+    display: flex;
   }
 }
 
 .landing-hero {
-  padding: 92px 0 64px;
+  padding-top: 72px;
+  padding-bottom: 72px;
   text-align: center;
 }
-.landing-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-  margin-bottom: 28px;
+.landing-eyebrow {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--accent-ink);
+  background: var(--accent-soft, rgba(247, 96, 67, 0.1));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 13px;
+  margin-bottom: 22px;
 }
 .landing-title {
-  font-size: 48px;
-  line-height: 1.05;
+  font-size: 46px;
+  line-height: 1.08;
   font-weight: 750;
   letter-spacing: -0.025em;
   color: var(--ink);
-  margin: 0 0 18px;
-}
-.landing-tagline {
-  font-size: 19px;
-  font-weight: 600;
-  color: var(--accent-ink);
-  margin: 0 0 16px;
+  max-width: 720px;
+  margin: 0 auto 18px;
 }
 .landing-lede {
   font-size: 16px;
@@ -1900,7 +1969,8 @@ table.grid-tbl {
 }
 
 .landing-features {
-  padding: 8px 0 72px;
+  padding-top: 8px;
+  padding-bottom: 80px;
   scroll-margin-top: 84px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1923,6 +1993,38 @@ table.grid-tbl {
   line-height: 1.6;
   color: var(--muted);
   margin: 0;
+}
+
+/* "Built in the open" note — the human, side-project context. */
+.landing-note {
+  padding-bottom: 80px;
+  max-width: 640px;
+  text-align: center;
+}
+.landing-note-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 14px;
+}
+.landing-note-body {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+}
+.landing-note-body strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.landing-note-body a {
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.landing-note-body a:hover {
+  text-decoration: underline;
 }
 
 .landing-footer {
@@ -1956,8 +2058,12 @@ table.grid-tbl {
 }
 
 @media (max-width: 640px) {
+  .landing-inner {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
   .landing-title {
-    font-size: 36px;
+    font-size: 34px;
   }
   .landing-features {
     grid-template-columns: 1fr;

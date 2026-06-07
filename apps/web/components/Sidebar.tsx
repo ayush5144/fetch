@@ -15,30 +15,30 @@ const NAV: { group: string; items: { href: string; label: string; ico: string }[
     group: 'Workspace',
     items: [
       { href: '/fetch', label: 'Overview', ico: '◈' },
-      { href: '/leads', label: 'Tables', ico: '☰' },
+      { href: '/fetch/leads', label: 'Tables', ico: '☰' },
     ],
   },
   {
     group: 'Dogi',
     items: [
-      { href: '/agents', label: 'Agents', ico: '🐕' },
-      { href: '/settings', label: 'Settings', ico: '⚙' },
+      { href: '/fetch/agents', label: 'Agents', ico: '🐕' },
+      { href: '/fetch/settings', label: 'Settings', ico: '⚙' },
     ],
   },
   {
     group: 'Outreach',
     items: [
-      { href: '/campaigns', label: 'Campaigns', ico: '✦' },
-      { href: '/prompts', label: 'Prompts', ico: '✎' },
-      { href: '/inbox', label: 'Reply inbox', ico: '@' },
+      { href: '/fetch/campaigns', label: 'Campaigns', ico: '✦' },
+      { href: '/fetch/prompts', label: 'Prompts', ico: '✎' },
+      { href: '/fetch/inbox', label: 'Reply inbox', ico: '@' },
     ],
   },
   {
     group: 'System',
     items: [
-      { href: '/jobs', label: 'Job monitor', ico: '◷' },
-      { href: '/activity', label: 'Activity', ico: '≡' },
-      { href: '/analytics', label: 'Analytics', ico: '▦' },
+      { href: '/fetch/jobs', label: 'Job monitor', ico: '◷' },
+      { href: '/fetch/activity', label: 'Activity', ico: '≡' },
+      { href: '/fetch/analytics', label: 'Analytics', ico: '▦' },
     ],
   },
 ];
@@ -49,10 +49,10 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="brand">
+      <Link href="/" className="brand" aria-label="Fetch home">
         <div className="brand-mark">F</div>
         <span className="brand-name">Fetch</span>
-      </div>
+      </Link>
       {NAV.map((section) => (
         <div key={section.group}>
           <div className="nav-label">{section.group}</div>
