@@ -1942,7 +1942,7 @@ table.grid-tbl {
   margin-bottom: clamp(20px, 2.6vw, 30px);
 }
 .landing-title {
-  font-size: clamp(2.6rem, 6.2vw, 5rem);
+  font-size: clamp(3rem, 9vw, 5rem);
   line-height: 1.04;
   font-weight: 760;
   letter-spacing: -0.03em;
@@ -1954,7 +1954,7 @@ table.grid-tbl {
   font-size: clamp(1.05rem, 1.7vw, 1.4rem);
   line-height: 1.6;
   color: var(--ink-soft);
-  max-width: 46ch;
+  max-width: 62ch;
   margin: 0 auto clamp(28px, 3.4vw, 44px);
 }
 .landing-lede strong {
@@ -1990,13 +1990,13 @@ table.grid-tbl {
   text-align: center;
 }
 .landing-card-title {
-  font-size: clamp(15px, 1.4vw, 18px);
+  font-size: 14px;
   font-weight: 700;
   color: var(--ink);
   margin: 0 0 8px;
 }
 .landing-card-body {
-  font-size: clamp(14px, 1.15vw, 16px);
+  font-size: 13px;
   line-height: 1.6;
   color: var(--muted);
   margin: 0;
