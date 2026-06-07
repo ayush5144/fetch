@@ -55,10 +55,7 @@ export default function LandingPage() {
 
       <section id="features" className="landing-inner landing-features">
         {FEATURES.map((f) => (
-          <div
-            key={f.title}
-            className="landing-card"
-          >
+          <div key={f.title} className="landing-card">
             <h2 className="landing-card-title">{f.title}</h2>
             <p className="landing-card-body">{f.body}</p>
           </div>

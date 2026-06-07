@@ -1968,6 +1968,8 @@ table.grid-tbl {
   font-size: 14px;
 }
 
+/* Features — centered cards in a fluid grid. Blocks share the row width (1fr
+   each) so they shrink with the viewport, and stack to one column on mobile. */
 .landing-features {
   padding-top: 8px;
   padding-bottom: 80px;
@@ -1980,7 +1982,8 @@ table.grid-tbl {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 22px 22px 20px;
+  padding: 24px 22px;
+  text-align: center;
 }
 .landing-card-title {
   font-size: 15px;

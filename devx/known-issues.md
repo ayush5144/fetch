@@ -120,6 +120,9 @@
      gutter is never clobbered (an earlier `padding: Xpx 0 Ypx` shorthand zeroed
      the sides and made content touch the screen edge). Copy uses plain hyphens,
      not em dashes.
+   - **Features** are **centered cards** in a fluid 2-up grid (`.landing-card`,
+     `1fr` columns so block width shrinks with the viewport); they stack to one
+     column below 640px.
    - **Gotcha (caused a false "all my data is gone" scare):** moving routes leaves
      a **stale `apps/web/.next`** → 500s / wrong pages / "broken navigation". Fix:
      `rm -rf apps/web/.next` and restart `pnpm --filter @fetch/web dev`. The data
