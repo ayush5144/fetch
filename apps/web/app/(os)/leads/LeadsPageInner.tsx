@@ -144,7 +144,7 @@ function TableHeadingMenu({
     setBusy(true);
     try {
       await api.del(`/tables/${table.id}`);
-      router.push('/');
+      router.push('/fetch');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Delete failed');
       setBusy(false);

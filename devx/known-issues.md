@@ -88,11 +88,7 @@
    that don't occur in a normal local build. But **`apps/web` is a pure HTTP
    client** — it imports **zero `@fetch/*` packages** (only next/react), so the
    deployed frontend never needs the backend compiled.
-   - **Fix:** added root `vercel.json` scoping the deploy to the web app only:
-     `installCommand: pnpm install --frozen-lockfile`,
-     `buildCommand: pnpm --filter @fetch/web run build`,
-     `outputDirectory: apps/web/.next`, `framework: nextjs`. The backend
-     (api/worker/mcp) runs elsewhere (self-host); it's not a Vercel target.
+   - **Fix:** set the Vercel project **Root Directory = `apps/web`** (its package.json has `next`, so Vercel auto-detects Next.js and installs the pnpm workspace from the repo root). The backend (api/worker/mcp) runs elsewhere; it is not a Vercel target. (An earlier root `vercel.json` caused "No Next.js detected" because Root Directory was the monorepo root — removed.)
    - Note: the full monorepo DOES build clean locally from a clean state
      (`pnpm -r build`, dist gitignored, lockfile committed) — the failure was
      Vercel compiling code it shouldn't, not a real code bug.

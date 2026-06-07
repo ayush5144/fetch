@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
-import { Sidebar } from '@/components/Sidebar';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Fetch — GTM OS',
-  description: 'An open-source, self-hostable GTM operating system.',
+  title: 'Fetch — open-source, self-hostable Clay',
+  description:
+    'A multi-table workspace where a column is a reusable job and an AI agent fills any cell. Bring your own keys, self-host everything.',
 };
 
 /**
- * Root shell: a persistent sidebar beside the routed content. Every page renders
- * its own Topbar inside the `.main` column so titles and actions stay aligned.
+ * Root layout: just the document shell + fonts. The OS routes add their own
+ * sidebar via the `(os)` route-group layout; the marketing landing at `/` has
+ * none.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,12 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://rsms.me/inter/inter.css"
         />
       </head>
-      <body>
-        <div className="shell">
-          <Sidebar />
-          <div className="main">{children}</div>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

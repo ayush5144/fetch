@@ -1768,3 +1768,135 @@ table.grid-tbl {
   font-size: 13px;
   color: var(--ink-soft);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Landing — the public marketing page at `/`. No sidebar; centered editorial
+   rhythm (hero → features → footer) built entirely on the design tokens above.
+   ───────────────────────────────────────────────────────────────────────────── */
+.landing {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+}
+.landing-inner {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.landing-hero {
+  padding: 92px 0 64px;
+  text-align: center;
+}
+.landing-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin-bottom: 28px;
+}
+.landing-title {
+  font-size: 48px;
+  line-height: 1.05;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  margin: 0 0 18px;
+}
+.landing-tagline {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  margin: 0 0 16px;
+}
+.landing-lede {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  max-width: 620px;
+  margin: 0 auto 32px;
+}
+.landing-lede strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.landing-cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.landing-cta .btn {
+  padding: 11px 20px;
+  font-size: 14px;
+}
+
+.landing-features {
+  padding: 8px 0 72px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.landing-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 22px 20px;
+}
+.landing-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 7px;
+}
+.landing-card-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0;
+}
+
+.landing-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+}
+.landing-footer-inner {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.landing-footer-inner a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-weight: 600;
+}
+.landing-footer-inner a:hover {
+  color: var(--accent-ink);
+}
+.landing-footer-sep {
+  color: var(--faint);
+}
+.landing-footer-spacer {
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .landing-title {
+    font-size: 36px;
+  }
+  .landing-features {
+    grid-template-columns: 1fr;
+  }
+}

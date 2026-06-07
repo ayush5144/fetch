@@ -14,7 +14,7 @@ const NAV: { group: string; items: { href: string; label: string; ico: string }[
   {
     group: 'Workspace',
     items: [
-      { href: '/', label: 'Overview', ico: '◈' },
+      { href: '/fetch', label: 'Overview', ico: '◈' },
       { href: '/leads', label: 'Tables', ico: '☰' },
     ],
   },
@@ -45,7 +45,7 @@ const NAV: { group: string; items: { href: string; label: string; ico: string }[
 
 export function Sidebar() {
   const path = usePathname();
-  const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+  const isActive = (href: string) => (href === '/fetch' ? path === '/fetch' : path.startsWith(href));
 
   return (
     <aside className="sidebar">

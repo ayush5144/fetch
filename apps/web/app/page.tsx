@@ -1,333 +1,85 @@
-'use client';
-
-import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Topbar } from '@/components/Topbar';
-import { Modal } from '@/components/Modal';
-import { api, tablesApi, type Table } from '@/lib/api';
-import { useApi } from '@/lib/useApi';
 
-/**
- * Overview — the table launcher (Phase A). Lists every table with its row/column
- * counts and creates new ones. This is where an operator picks which table to
- * work in, Clay-style.
- */
-interface Overview {
-  leads: { total: number; valid: number; sent: number; replied: number };
-}
+const GITHUB = 'https://github.com/ayush5144/fetch';
 
-/** Compact "updated 3d ago" label; falls back to a date for older rows. */
-function relativeUpdated(iso?: string): string {
-  if (!iso) return '—';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '—';
-  const sec = Math.round((Date.now() - then) / 1000);
-  if (sec < 60) return 'just now';
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.round(hr / 24);
-  if (day < 30) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
+const FEATURES: { title: string; body: string }[] = [
+  {
+    title: 'Dogi — fills any cell',
+    body: 'A configurable agent enriches one cell at a time using data providers, web search, scraping, or an LLM — with provenance on every value.',
+  },
+  {
+    title: 'Bone — builds whole tables',
+    body: 'The autonomous orchestrator sources rows and builds the columns to enrich them, turning a goal into a finished table.',
+  },
+  {
+    title: 'Self-hostable & BYOK',
+    body: 'Four LLM providers, your own keys. Run the whole stack yourself — keys are never persisted server-side or logged.',
+  },
+  {
+    title: 'Own your data',
+    body: 'One canonical record in Postgres as the single source of truth. No parallel tables, no vendor lock-in.',
+  },
+];
 
-export default function OverviewPage() {
-  const tables = useApi<{ tables: Table[] }>('/tables', 6000);
-  const stats = useApi<Overview>('/analytics/overview', 8000);
-  const [open, setOpen] = useState(false);
-  const [tableMenu, setTableMenu] = useState<{ table: Table; rect: DOMRect } | null>(null);
-  const [query, setQuery] = useState('');
-
-  const allTables = tables.data?.tables ?? [];
-  const q = query.trim().toLowerCase();
-  const visibleTables = q
-    ? allTables.filter((t) => t.name.toLowerCase().includes(q))
-    : allTables;
-
-  const l = stats.data?.leads;
-  const tiles = [
-    { label: 'Total leads', value: l?.total ?? 0 },
-    { label: 'Valid', value: l?.valid ?? 0 },
-    { label: 'Sent', value: l?.sent ?? 0 },
-    { label: 'Replied', value: l?.replied ?? 0 },
-  ];
-
+export default function LandingPage() {
   return (
-    <>
-      <Topbar
-        title="Overview"
-        subtitle="Your tables — pick one to work in, or start a new one."
-        actions={
-          <button className="btn btn-accent" onClick={() => setOpen(true)}>
-            New table
-          </button>
-        }
-      />
-      <div className="content stack">
-        <div className="stat-grid">
-          {tiles.map((t) => (
-            <div className="stat" key={t.label}>
-              <div className="stat-label">{t.label}</div>
-              <div className="stat-value">{t.value.toLocaleString()}</div>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <div
-            className="row"
-            style={{ justifyContent: 'space-between', marginBottom: 12 }}
+    <div className="landing">
+      <section className="landing-inner landing-hero">
+        <div className="landing-mark">Fetch 🐕</div>
+        <h1 className="landing-title">Open-source, self-hostable Clay</h1>
+        <p className="landing-tagline">A column is a reusable job. An AI agent fills every cell.</p>
+        <p className="landing-lede">
+          Fetch is a multi-table workspace where each column is a reusable job and a customizable
+          agent. <strong>Dogi</strong> fills any cell with provenance; <strong>Bone</strong> builds
+          whole tables on its own. Bring your own keys and self-host everything.
+        </p>
+        <div className="landing-cta">
+          <Link
+            href="/fetch"
+            className="btn btn-accent"
           >
-            <div className="section-title" style={{ margin: 0 }}>Tables</div>
-            <label className="search" style={{ minWidth: 220 }}>
-              <span className="muted" style={{ fontSize: 13 }} aria-hidden>⌕</span>
-              <input
-                type="text"
-                placeholder="Search tables…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search tables by name"
-              />
-            </label>
-          </div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Rows</th>
-                  <th>Columns</th>
-                  <th>Updated</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleTables.map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <Link
-                        href={`/leads?table=${t.id}`}
-                        className="row"
-                        style={{ gap: 8, textDecoration: 'none' }}
-                      >
-                        <span style={{ fontSize: 16 }}>{t.icon ?? '▦'}</span>
-                        <span className="cell-strong">{t.name}</span>
-                        {t.settings?.protected && (
-                          <span
-                            className="pill pill-muted"
-                            style={{ fontSize: 10, padding: '1px 7px' }}
-                            title="Example table — protected"
-                          >
-                            Example
-                          </span>
-                        )}
-                      </Link>
-                    </td>
-                    <td className="muted">{t.leadCount.toLocaleString()}</td>
-                    <td className="muted">{t.columnCount}</td>
-                    <td className="muted">{relativeUpdated(t.updatedAt ?? t.createdAt)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      {!t.settings?.protected && (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title="Table options"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            setTableMenu({ table: t, rect });
-                          }}
-                        >
-                          ⋯
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {visibleTables.length === 0 && (
-                  <tr>
-                    <td colSpan={5}>
-                      <div className="empty">
-                        <div className="empty-icon">▦</div>
-                        {q
-                          ? `No tables match “${query.trim()}”.`
-                          : 'No tables yet. Create one to start.'}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+            Open Fetch →
+          </Link>
+          <a
+            href={GITHUB}
+            className="btn btn-ghost"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+          </a>
         </div>
-      </div>
+      </section>
 
-      {open && <NewTableModal onClose={() => setOpen(false)} onDone={tables.refresh} />}
-
-      {/* Table card context menu */}
-      {tableMenu && (
-        <TableCardMenu
-          table={tableMenu.table}
-          anchorRect={tableMenu.rect}
-          onClose={() => setTableMenu(null)}
-          onDeleted={tables.refresh}
-          onRenamed={tables.refresh}
-        />
-      )}
-    </>
-  );
-}
-
-/** Small context menu for a table card — Rename (inline) + Delete. */
-function TableCardMenu({
-  table,
-  anchorRect,
-  onClose,
-  onDeleted,
-  onRenamed,
-}: {
-  table: Table;
-  anchorRect: DOMRect;
-  onClose: () => void;
-  onDeleted: () => void;
-  onRenamed: () => void;
-}) {
-  const top = Math.min(anchorRect.bottom + 4, window.innerHeight - 200);
-  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 240));
-  const [busy, setBusy] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(table.name);
-  const [error, setError] = useState<string | null>(null);
-
-  async function deleteTable() {
-    if (!confirm(`Delete table "${table.name}"? All leads and columns in this table will be permanently removed.`)) return;
-    setBusy(true);
-    try {
-      await api.del(`/tables/${table.id}`);
-      onDeleted();
-      onClose();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Delete failed');
-      setBusy(false);
-    }
-  }
-
-  async function commitRename() {
-    const next = name.trim();
-    if (!next || next === table.name) { onClose(); return; }
-    setBusy(true);
-    setError(null);
-    try {
-      await tablesApi.rename(table.id, next);
-      onRenamed();
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Rename failed');
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <div className="col-menu-backdrop" onClick={onClose} />
-      <div className="col-menu" style={{ top, left }} role="menu">
-        {renaming ? (
-          <div style={{ padding: 10, minWidth: 220 }}>
-            <input
-              className="input"
-              autoFocus
-              value={name}
-              disabled={busy}
-              onChange={(e) => { setName(e.target.value); setError(null); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitRename();
-                if (e.key === 'Escape') onClose();
-              }}
-              aria-label="Table name"
-            />
-            {error && (
-              <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 6 }}>{error}</div>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onClose}>Cancel</button>
-              <button
-                className="btn btn-accent btn-sm"
-                disabled={busy || !name.trim()}
-                onClick={commitRename}
-              >
-                {busy ? 'Saving…' : 'Rename'}
-              </button>
-            </div>
+      <section className="landing-inner landing-features">
+        {FEATURES.map((f) => (
+          <div
+            key={f.title}
+            className="landing-card"
+          >
+            <h2 className="landing-card-title">{f.title}</h2>
+            <p className="landing-card-body">{f.body}</p>
           </div>
-        ) : (
-          <>
-            <button className="col-menu-item" onClick={() => { setName(table.name); setError(null); setRenaming(true); }}>
-              <span>Aa</span> Rename
-            </button>
-            <div className="col-menu-sep" />
-            <button
-              className="col-menu-item danger"
-              disabled={busy}
-              onClick={deleteTable}
-            >
-              <span>🗑</span> {busy ? 'Deleting…' : 'Delete table'}
-            </button>
-          </>
-        )}
-      </div>
-    </>
-  );
-}
+        ))}
+      </section>
 
-function NewTableModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [busy, setBusy] = useState(false);
-  const router = useRouter();
-
-  async function submit() {
-    setBusy(true);
-    try {
-      const { table } = await api.post<{ table: Table }>('/tables', { name, description });
-      onDone();
-      onClose();
-      router.push(`/leads?table=${table.id}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      title="New table"
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn btn-accent" disabled={busy || !name} onClick={submit}>
-            {busy ? 'Creating…' : 'Create table'}
-          </button>
-        </>
-      }
-    >
-      <div className="field">
-        <label>Name</label>
-        <input
-          className="input"
-          placeholder="e.g. India tech companies"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoFocus
-        />
-      </div>
-      <div className="field">
-        <label>Description (optional)</label>
-        <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-    </Modal>
+      <footer className="landing-footer">
+        <div className="landing-footer-inner">
+          <a
+            href={GITHUB}
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+          </a>
+          <span className="landing-footer-sep">·</span>
+          <a href="mailto:ayushpatil9977@gmail.com">ayushpatil9977@gmail.com</a>
+          <span className="landing-footer-spacer" />
+          <span>MIT licensed</span>
+          <span className="landing-footer-sep">·</span>
+          <span>© 2026 Fetch</span>
+        </div>
+      </footer>
+    </div>
   );
 }
