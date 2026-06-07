@@ -1,0 +1,2074 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Fetch — design system
+   A light, editorial workspace inspired by the Bloomberry palette: a near-white
+   canvas, deep navy ink, and a single warm coral accent used sparingly for
+   emphasis and primary actions. One accent, generous whitespace, hairline
+   borders. Everything below is a token or a small, composable component class.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Canvas + surfaces */
+  --bg: #ffffff;
+  --surface: #faf9f7;
+  --surface-2: #f4f2ee;
+  --border: #eae8e2;
+  --border-strong: #ddd9d0;
+
+  /* Ink */
+  --ink: #1b2440; /* headings, primary text */
+  --ink-soft: #3d4760; /* body */
+  --muted: #797f8d; /* secondary / captions */
+  --faint: #a7abb5; /* placeholders, disabled */
+
+  /* Accent — warm coral. Used for primary actions and emphasis only. */
+  --accent: #f76043;
+  --accent-ink: #d8492e;
+  --accent-soft: #fdeae4;
+
+  /* Status hues (kept muted to sit calmly in the table) */
+  --green: #2f9e6b;
+  --green-soft: #e6f4ec;
+  --amber: #c98a1e;
+  --amber-soft: #f8efdc;
+  --red: #d2452f;
+  --red-soft: #fbe7e2;
+  --blue: #3866c7;
+  --blue-soft: #e7eefb;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow-sm: 0 1px 2px rgba(27, 36, 64, 0.05);
+  --shadow: 0 4px 16px rgba(27, 36, 64, 0.08);
+  --sidebar-w: 232px;
+
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink-soft);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+/* ── App shell ──────────────────────────────────────────────────────────────*/
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px 18px;
+}
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 15px;
+}
+.brand-name {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.nav-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  padding: 14px 10px 6px;
+  font-weight: 600;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.nav-item:hover {
+  background: var(--surface-2);
+}
+.nav-item.active {
+  background: var(--ink);
+  color: #fff;
+}
+.nav-item .ico {
+  width: 16px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────────*/
+.topbar {
+  height: 60px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.topbar h1 {
+  font-size: 17px;
+}
+.topbar-sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 1px;
+}
+
+.content {
+  padding: 28px;
+  flex: 1;
+}
+
+/* ── Pills / badges ─────────────────────────────────────────────────────────*/
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.pill-accent {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+.pill-green {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: transparent;
+}
+.pill-green .dot {
+  background: var(--green);
+}
+.pill-amber {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: transparent;
+}
+.pill-amber .dot {
+  background: var(--amber);
+}
+.pill-red {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: transparent;
+}
+.pill-red .dot {
+  background: var(--red);
+}
+.pill-blue {
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-color: transparent;
+}
+.pill-blue .dot {
+  background: var(--blue);
+}
+.pill-muted {
+  color: var(--muted);
+}
+.pill-muted .dot {
+  background: var(--faint);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────*/
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.04s ease;
+  font-family: inherit;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--ink);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #11192f;
+}
+.btn-accent {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-accent:hover {
+  background: var(--accent-ink);
+}
+.btn-ghost {
+  background: var(--bg);
+  border-color: var(--border-strong);
+  color: var(--ink-soft);
+}
+.btn-ghost:hover {
+  background: var(--surface);
+}
+.btn-sm {
+  padding: 5px 11px;
+  font-size: 12px;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────*/
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.card-pad {
+  padding: 20px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.card-head h3 {
+  font-size: 14px;
+}
+
+/* Stat tiles */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+}
+.stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+}
+.stat-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stat-value {
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.stat-foot {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────────*/
+.table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+table.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tbl thead th {
+  text-align: left;
+  padding: 11px 14px;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+.tbl tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.tbl tbody tr:last-child td {
+  border-bottom: none;
+}
+.tbl tbody tr:hover {
+  background: var(--surface);
+}
+.cell-strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.cell-muted {
+  color: var(--faint);
+}
+.cell-mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.cell-run {
+  color: var(--accent-ink);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12px;
+}
+.cell-run:hover {
+  text-decoration: underline;
+}
+
+/* Activity feed (G.2c) — friendly one-line rows over audit_log. */
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.activity-row:last-child {
+  border-bottom: none;
+}
+.activity-row:hover {
+  background: var(--surface);
+}
+.activity-entity {
+  color: var(--ink);
+  font-weight: 500;
+}
+.activity-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.activity-field {
+  color: var(--muted);
+}
+.activity-spacer {
+  flex: 1;
+}
+.activity-actor {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.activity-time {
+  color: var(--faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.conf {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+/* ── Forms ──────────────────────────────────────────────────────────────────*/
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--accent);
+}
+.textarea {
+  resize: vertical;
+  min-height: 90px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* ── Toolbar / filters ──────────────────────────────────────────────────────*/
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.toolbar .spacer {
+  flex: 1;
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  min-width: 240px;
+}
+.search input {
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 13px;
+  width: 100%;
+  color: var(--ink);
+  background: transparent;
+}
+
+/* ── Misc ───────────────────────────────────────────────────────────────────*/
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+.muted {
+  color: var(--muted);
+}
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--muted);
+}
+.empty-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+.kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+  color: var(--muted);
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 36, 64, 0.32);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  padding: 24px;
+}
+.modal {
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 520px;
+  max-height: 86vh;
+  overflow: auto;
+}
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Ask Bone modal ────────────────────────────────────────────────────────*/
+.bone-step {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bone-step-source {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.bone-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.bone-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Run-flow: the "add N more rows" field inside the confirm modal. */
+.flow-more-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.flow-more-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Run-flow modal: Append vs Replace mode picker. */
+.flow-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.flow-mode-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+.flow-mode-opt:hover {
+  border-color: var(--border-strong);
+}
+.flow-mode-opt.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.flow-mode-opt input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.flow-mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-mode-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.flow-mode-help {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* Per-table settings modal rows. */
+.table-settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.table-settings-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.table-settings-help {
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.bone-settings {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.bone-settings-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.bone-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.bone-banner {
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.bone-banner-amber {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+.bone-banner-red {
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+.bone-banner-green {
+  background: var(--green-soft);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+
+/* "This agent will use" — capability summary above the plan review. */
+.bone-agent-uses {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+.bone-agent-uses-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bone-agent-uses-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Per-step source toggles inside a column step card. */
+.bone-step-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bone-step-sources-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bone-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.bone-source-chip:hover {
+  border-color: var(--border-strong);
+}
+.bone-source-chip input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.bone-source-chip-sm {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* "+ Add column" button in the plan review. */
+.bone-add-col {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+.bone-add-col:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* progress bar (analytics funnel) */
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* ── Clay-style spreadsheet grid ────────────────────────────────────────────*/
+
+/* Grid shell — full bleed within .main */
+.grid-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  /* Outer breathing room lives HERE (not on the scroll container) so the sticky
+     pinned columns pin AND clip at the same edge — data never bleeds past them. */
+  padding: 0 24px;
+}
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  background: var(--bg);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  position: relative;
+}
+.grid-toolbar .spacer {
+  flex: 1;
+}
+/* "Dogi working… N running" indicator — a calm coral pill while cell jobs
+   are in flight. Reuses .pill; the dot pulses to signal live work. */
+.grid-working-pill {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.grid-working-pill .dot {
+  background: var(--accent);
+  animation: grid-pulse 1.1s ease-in-out infinite;
+}
+/* Bulk-action bar wrapper — floats inside the toolbar row */
+.grid-toolbar-bulk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The scrollable spreadsheet area. NO horizontal padding — the breathing room
+   is on .grid-page, so the sticky columns pin and clip at the scroll edges and
+   data cells never appear past the pinned columns. */
+.grid-scroll {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  padding: 0 0 24px;
+}
+
+/* Grid table — no cell padding added here; cells control their own */
+table.grid-tbl {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+/* Tighter, cleaner cells; the breathing room is around the whole table. */
+:root {
+  --grid-row-h: 34px;
+  --grid-th-h: 36px;
+  --grid-cell-px: 12px;
+  --grid-cell-py: 5px;
+}
+
+/* Column sizes */
+.grid-col-check {
+  width: 40px;
+  min-width: 40px;
+}
+.grid-col-num {
+  width: 44px;
+  min-width: 44px;
+}
+.grid-col-add {
+  width: 52px;
+  min-width: 52px;
+}
+
+/* Header cells */
+.grid-tbl thead th {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: middle;
+}
+/* Left-pinned header cells: checkbox + row# */
+.grid-tbl thead th:first-child {
+  left: 0;
+  z-index: 8; /* highest: pinned header on top of everything */
+  background: var(--surface);
+  /* divider only on the very end of the pinned left block (row# column carries it) */
+}
+.grid-tbl thead th:nth-child(2) {
+  left: 40px;
+  z-index: 8;
+  background: var(--surface);
+  /* solid divider between pinned-left and scroll area */
+  border-right: 2px solid var(--border-strong);
+}
+/* Pin the trailing + column to the right (permanent, like the left two). */
+.grid-tbl thead th:last-child {
+  right: 0;
+  left: auto;
+  z-index: 8;
+  border-right: none;
+  /* solid divider between scroll area and pinned-right */
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface);
+}
+
+/* Header inner layout */
+.grid-th-inner {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 var(--grid-cell-px);
+  height: var(--grid-th-h);
+  position: relative;
+}
+.grid-th-icon {
+  font-size: 11px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.grid-th-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.grid-th-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+  flex-shrink: 0;
+}
+.grid-tbl thead th:hover .grid-th-actions {
+  opacity: 1;
+}
+.grid-th-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: inherit;
+  line-height: 1;
+}
+.grid-th-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* Column resize handle */
+.grid-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 1;
+}
+.grid-resize-handle:hover,
+.grid-resize-handle.dragging {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+/* Add column header cell */
+.grid-th-add {
+  cursor: pointer;
+  text-align: center;
+  position: sticky;
+  right: 0;
+  z-index: 5 !important;
+  background: var(--surface) !important;
+  border-left: 1px solid var(--border);
+}
+.grid-th-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--grid-th-h);
+  font-size: 16px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+.grid-th-add-btn:hover {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+/* Body rows */
+.grid-tbl tbody td {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0;
+  height: var(--grid-row-h);
+  vertical-align: middle;
+  position: relative;
+  background: var(--bg);
+  /* normal data cells stay BELOW all pinned columns */
+  z-index: 0;
+}
+
+/* Sticky left columns in body — z-index 3 so they sit above normal cells */
+.grid-tbl tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--bg); /* opaque — never transparent */
+}
+.grid-tbl tbody td:nth-child(2) {
+  position: sticky;
+  left: 40px;
+  z-index: 3;
+  background: var(--bg); /* opaque */
+  /* solid divider between pinned-left and scroll area */
+  border-right: 2px solid var(--border-strong);
+}
+
+/* Pinned trailing + column in body rows — z-index 3, same level as left pins */
+.grid-tbl tbody td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  border-right: none;
+  /* solid divider between scroll area and pinned-right */
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg); /* opaque */
+}
+
+/* Row hover: update ONLY the pinned cells' bg, keep the divider borders */
+.grid-tbl tbody tr:hover td {
+  background: var(--surface);
+}
+.grid-tbl tbody tr:hover td:first-child {
+  background: var(--surface);
+}
+.grid-tbl tbody tr:hover td:nth-child(2) {
+  background: var(--surface);
+}
+.grid-tbl tbody tr:hover td:last-child {
+  background: var(--surface);
+}
+
+/* Cell check + row number */
+.grid-cell-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--grid-row-h);
+}
+.grid-cell-num {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 6px 0 8px;
+  height: var(--grid-row-h);
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  cursor: grab;
+}
+.grid-cell-num:active {
+  cursor: grabbing;
+}
+.grid-cell-num-idx {
+  margin-left: auto;
+}
+/* Hover-revealed "re-run row" affordance on the row-number cell. */
+.grid-row-rerun {
+  opacity: 0;
+  cursor: pointer;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: opacity 0.1s ease;
+}
+.grid-tbl tbody tr:hover .grid-row-rerun {
+  opacity: 1;
+}
+.grid-row-rerun:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Data cells — comfortable padding, not corner-to-corner */
+.grid-cell {
+  display: flex;
+  align-items: center;
+  padding: var(--grid-cell-py) var(--grid-cell-px);
+  min-height: var(--grid-row-h);
+  gap: 6px;
+  cursor: text;
+  min-width: 0;
+}
+.grid-cell:hover .grid-cell-run {
+  opacity: 1;
+}
+.grid-cell-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-size: 13px;
+  min-width: 0;
+}
+.grid-cell-value.is-strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.grid-cell-value.is-mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.grid-cell-value.is-muted {
+  color: var(--faint);
+}
+.grid-cell-value.is-edited {
+  border-bottom: 1.5px dashed var(--amber);
+}
+.grid-cell-conf {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.grid-cell-conf a {
+  color: var(--blue);
+}
+.grid-cell-run {
+  opacity: 0;
+  cursor: pointer;
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  border: none;
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.1s ease;
+}
+.grid-cell-run:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Cell states */
+.grid-cell-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: grid-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes grid-spin {
+  to { transform: rotate(360deg); }
+}
+/* Queued: a soft pulsing dot rather than a static glyph (no layout shift). */
+.grid-cell-pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: grid-pulse 1.1s ease-in-out infinite;
+}
+@keyframes grid-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.grid-cell-queued {
+  color: var(--muted);
+  font-size: 12px;
+}
+.grid-cell-error {
+  color: var(--red);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Failed Dogi cell: ran and found nothing. Calm amber pill, distinct from the
+   red live-job error and the plain empty "▷ Run" cell. */
+.grid-cell-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+  background: var(--amber-soft);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Synthetic flow (agent) column — a real in-grid column for a saved Bone flow.
+   Tinted to read as a derived/agent column, on-brand with the accent. */
+.grid-th-flow {
+  background: var(--accent-soft) !important;
+}
+.grid-th-flow-inner {
+  gap: 6px;
+}
+.grid-th-flow-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.1;
+}
+.grid-th-flow-sub {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.grid-th-flow-actions {
+  opacity: 1; /* the run ▷ is the column's primary action — always visible */
+}
+.grid-tbl tbody td.grid-td-flow {
+  background: var(--accent-soft);
+}
+.grid-tbl tbody tr:hover td.grid-td-flow {
+  background: var(--accent-soft);
+}
+.flow-cell-done {
+  font-size: 11px;
+}
+
+/* Inline edit input */
+.grid-cell-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 0;
+}
+
+/* Row drag — dragging indicator */
+.grid-row-dragging td {
+  background: var(--accent-soft) !important;
+  opacity: 0.8;
+}
+.grid-row-drop-above td {
+  border-top: 2px solid var(--accent) !important;
+}
+.grid-row-drop-below td {
+  border-bottom: 2px solid var(--accent) !important;
+}
+
+/* Selected row */
+.grid-tbl tbody tr.grid-row-selected td {
+  background: var(--blue-soft) !important;
+}
+
+/* Add-row footer */
+.grid-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 84px;
+  height: var(--grid-row-h);
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--bg);
+  transition: background 0.1s ease, color 0.1s ease;
+  border-bottom: 1px solid var(--border);
+}
+.grid-add-row:hover {
+  background: var(--surface);
+  color: var(--ink-soft);
+}
+
+/* ── Column create popover ───────────────────────────────────────────────────*/
+.col-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+.col-popover {
+  position: fixed;
+  z-index: 31;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 320px;
+  padding: 16px;
+}
+
+/* Type picker grid */
+.type-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.type-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: var(--bg);
+  transition: border-color 0.1s, background 0.1s;
+}
+.type-picker-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.type-picker-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.type-picker-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.type-picker-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-align: center;
+}
+.type-picker-section {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+/* Common-field quick-pick chips (add-column popover) */
+.field-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.field-template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+}
+.field-template-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+.field-template-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* Inline hint next to a gated Dogi source toggle */
+.dogi-source-hint {
+  font-size: 11px;
+  color: var(--amber);
+}
+
+/* ── Column header context menu ─────────────────────────────────────────────*/
+.col-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.col-menu {
+  position: fixed;
+  z-index: 21;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  min-width: 180px;
+  padding: 4px 0;
+}
+.col-menu-info {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  user-select: none;
+}
+.col-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.1s ease;
+}
+.col-menu-item:hover {
+  background: var(--surface);
+}
+.col-menu-item.danger {
+  color: var(--red);
+}
+.col-menu-item.danger:hover {
+  background: var(--red-soft);
+}
+.col-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Column-header hover tooltip — instant, on-brand card matching the col menu.
+   position: fixed (set inline via getBoundingClientRect) so it escapes the
+   grid's scroll overflow and is never clipped; centered & translated left. */
+.grid-th-tip {
+  position: fixed;
+  z-index: 25;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 5px 10px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+.grid-th-tip-prov {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ── Cell side-peek panel ───────────────────────────────────────────────────*/
+.cell-peek-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(27, 36, 64, 0.12);
+}
+.cell-peek {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 340px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cell-peek-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.cell-peek-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cell-peek-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.cell-peek-value {
+  font-size: 14px;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+/* ── CSV import mapping (step 2) ────────────────────────────────────────────*/
+.import-step2 {
+  min-width: 0;
+}
+.import-map-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-size: 12px;
+}
+.import-map-header {
+  display: grid;
+  grid-template-columns: 140px 1fr 140px 1fr;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.import-map-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 140px 1fr;
+  gap: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  gap: 10px;
+  transition: background 0.1s ease;
+}
+.import-map-row:last-child {
+  border-bottom: none;
+}
+.import-map-row:hover {
+  background: var(--surface);
+}
+.import-map-row-skipped {
+  opacity: 0.45;
+}
+.import-map-col-csv,
+.import-map-col-sample,
+.import-map-col-action,
+.import-map-col-detail {
+  min-width: 0;
+  overflow: hidden;
+}
+.import-map-header-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Bulk-action bar (floats above grid when rows are selected) ─────────────*/
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-wrap: wrap;
+}
+.bulk-bar-count {
+  font-weight: 600;
+  color: #fff;
+  margin-right: 4px;
+}
+.bulk-bar-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+.bulk-bar-btn {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s ease;
+}
+.bulk-bar-btn:hover {
+  background: rgba(255,255,255,0.22);
+}
+.bulk-bar-btn.danger {
+  background: rgba(210, 69, 47, 0.7);
+  border-color: rgba(210, 69, 47, 0.5);
+}
+.bulk-bar-btn.danger:hover {
+  background: var(--red);
+}
+.bulk-bar-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  opacity: 0.72;
+}
+.bulk-bar-btn.ghost:hover {
+  background: rgba(255,255,255,0.1);
+  opacity: 1;
+}
+
+/* ── Agents page ────────────────────────────────────────────────────────────*/
+.agent-summary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}
+
+/* ── Settings page (read-only key status) ───────────────────────────────────*/
+.settings-model {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.settings-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row:last-child {
+  border-bottom: none;
+}
+.settings-row-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Landing — the public marketing page at `/`. No sidebar; centered editorial
+   rhythm (hero → features → footer) built entirely on the design tokens above.
+   ───────────────────────────────────────────────────────────────────────────── */
+.landing {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+}
+.landing-inner {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  /* Single source of the side gutter — section classes below set ONLY vertical
+     padding so they never clobber this and let content touch the screen edge. */
+  padding-left: 32px;
+  padding-right: 32px;
+}
+
+/* Regular top navbar — solid bar with a hairline bottom border (Fetch tokens). */
+.landing-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.landing-nav-inner {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  height: 60px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.landing-nav-brand {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.landing-nav-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.landing-nav-link:hover {
+  color: var(--ink);
+}
+
+/* Hamburger button — hidden on desktop, revealed at the mobile breakpoint. */
+.landing-nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.landing-nav-toggle span {
+  display: block;
+  width: 17px;
+  height: 2px;
+  margin: 0 auto;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+/* Mobile slide-in drawer + backdrop. Hidden entirely on desktop; the media
+   query below flips them on. `.is-open` is toggled from LandingNav. */
+.landing-drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 20, 35, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.landing-drawer-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.landing-drawer {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 61;
+  height: 100%;
+  width: min(78vw, 280px);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.12);
+  padding: 76px 18px 22px;
+  flex-direction: column;
+  gap: 4px;
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+}
+.landing-drawer.is-open {
+  transform: translateX(0);
+}
+.landing-drawer-link {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 12px;
+  border-radius: 9px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.landing-drawer-link:hover {
+  background: var(--bg);
+  color: var(--accent-ink);
+}
+
+@media (max-width: 640px) {
+  .landing-nav-links {
+    display: none;
+  }
+  .landing-nav-toggle {
+    display: flex;
+  }
+  .landing-drawer-backdrop {
+    display: block;
+  }
+  .landing-drawer {
+    display: flex;
+  }
+}
+
+.landing-hero {
+  padding-top: 72px;
+  padding-bottom: 72px;
+  text-align: center;
+}
+.landing-eyebrow {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--accent-ink);
+  background: var(--accent-soft, rgba(247, 96, 67, 0.1));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 13px;
+  margin-bottom: 22px;
+}
+.landing-title {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  max-width: 720px;
+  margin: 0 auto 18px;
+}
+.landing-lede {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  max-width: 620px;
+  margin: 0 auto 32px;
+}
+.landing-lede strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.landing-cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.landing-cta .btn {
+  padding: 11px 20px;
+  font-size: 14px;
+}
+
+/* Features — centered cards in a fluid grid. Blocks share the row width (1fr
+   each) so they shrink with the viewport, and stack to one column on mobile. */
+.landing-features {
+  padding-top: 8px;
+  padding-bottom: 80px;
+  scroll-margin-top: 84px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.landing-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 22px;
+  text-align: center;
+}
+.landing-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 7px;
+}
+.landing-card-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* "Built in the open" note — the human, side-project context. */
+.landing-note {
+  padding-bottom: 80px;
+  max-width: 640px;
+  text-align: center;
+}
+.landing-note-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 14px;
+}
+.landing-note-body {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+}
+.landing-note-body strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.landing-note-body a {
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.landing-note-body a:hover {
+  text-decoration: underline;
+}
+
+.landing-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+}
+.landing-footer-inner {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.landing-footer-inner a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-weight: 600;
+}
+.landing-footer-inner a:hover {
+  color: var(--accent-ink);
+}
+.landing-footer-sep {
+  color: var(--faint);
+}
+.landing-footer-spacer {
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .landing-inner {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .landing-title {
+    font-size: 34px;
+  }
+  .landing-features {
+    grid-template-columns: 1fr;
+  }
+}

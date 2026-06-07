@@ -1,0 +1,10 @@
+apps/api
+apps/web
+apps/worker
+apps/mcp
+packages
+dev_notes
+devx
+infra
+scripts
+test
