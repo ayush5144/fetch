@@ -1782,12 +1782,13 @@ table.grid-tbl {
 }
 .landing-inner {
   width: 100%;
-  max-width: 940px;
+  max-width: 1120px;
   margin: 0 auto;
-  /* Single source of the side gutter — section classes below set ONLY vertical
-     padding so they never clobber this and let content touch the screen edge. */
-  padding-left: 32px;
-  padding-right: 32px;
+  /* Single source of the side gutter — fluid, so it grows/shrinks with the
+     viewport. Section classes below set ONLY vertical padding so they never
+     clobber this and let content touch the screen edge. */
+  padding-left: clamp(20px, 5vw, 48px);
+  padding-right: clamp(20px, 5vw, 48px);
 }
 
 /* Regular top navbar — solid bar with a hairline bottom border (Fetch tokens). */
@@ -1801,16 +1802,16 @@ table.grid-tbl {
 }
 .landing-nav-inner {
   width: 100%;
-  max-width: 920px;
+  max-width: 1120px;
   margin: 0 auto;
-  height: 60px;
-  padding: 0 24px;
+  height: clamp(60px, 7vw, 72px);
+  padding: 0 clamp(20px, 5vw, 48px);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 .landing-nav-brand {
-  font-size: 17px;
+  font-size: clamp(17px, 1.6vw, 20px);
   font-weight: 700;
   color: var(--ink);
   letter-spacing: -0.01em;
@@ -1920,38 +1921,41 @@ table.grid-tbl {
   }
 }
 
+/* Hero — fluid throughout: padding, type, and spacing all scale smoothly with
+   the viewport (clamp(min, vw, max)) so it grows on wide screens and stays
+   readable on phones, no hard breakpoint jumps. */
 .landing-hero {
-  padding-top: 72px;
-  padding-bottom: 72px;
+  padding-top: clamp(56px, 10vw, 128px);
+  padding-bottom: clamp(64px, 11vw, 144px);
   text-align: center;
 }
 .landing-eyebrow {
   display: inline-block;
-  font-size: 12.5px;
+  font-size: clamp(12px, 1.1vw, 14px);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--accent-ink);
   background: var(--accent-soft, rgba(247, 96, 67, 0.1));
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 5px 13px;
-  margin-bottom: 22px;
+  padding: 6px clamp(13px, 1.4vw, 18px);
+  margin-bottom: clamp(20px, 2.6vw, 30px);
 }
 .landing-title {
-  font-size: 46px;
-  line-height: 1.08;
-  font-weight: 750;
-  letter-spacing: -0.025em;
+  font-size: clamp(2.6rem, 6.2vw, 5rem);
+  line-height: 1.04;
+  font-weight: 760;
+  letter-spacing: -0.03em;
   color: var(--ink);
-  max-width: 720px;
-  margin: 0 auto 18px;
+  max-width: 16ch;
+  margin: 0 auto clamp(18px, 2.4vw, 28px);
 }
 .landing-lede {
-  font-size: 16px;
-  line-height: 1.65;
+  font-size: clamp(1.05rem, 1.7vw, 1.4rem);
+  line-height: 1.6;
   color: var(--ink-soft);
-  max-width: 620px;
-  margin: 0 auto 32px;
+  max-width: 46ch;
+  margin: 0 auto clamp(28px, 3.4vw, 44px);
 }
 .landing-lede strong {
   color: var(--ink);
@@ -1964,35 +1968,35 @@ table.grid-tbl {
   flex-wrap: wrap;
 }
 .landing-cta .btn {
-  padding: 11px 20px;
-  font-size: 14px;
+  padding: clamp(11px, 1.3vw, 15px) clamp(20px, 2.4vw, 30px);
+  font-size: clamp(14px, 1.2vw, 16px);
 }
 
 /* Features — centered cards in a fluid grid. Blocks share the row width (1fr
    each) so they shrink with the viewport, and stack to one column on mobile. */
 .landing-features {
   padding-top: 8px;
-  padding-bottom: 80px;
+  padding-bottom: clamp(72px, 9vw, 112px);
   scroll-margin-top: 84px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: clamp(16px, 2vw, 26px);
 }
 .landing-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 24px 22px;
+  padding: clamp(24px, 3vw, 38px) clamp(22px, 2.6vw, 34px);
   text-align: center;
 }
 .landing-card-title {
-  font-size: 15px;
+  font-size: clamp(15px, 1.4vw, 18px);
   font-weight: 700;
   color: var(--ink);
-  margin: 0 0 7px;
+  margin: 0 0 8px;
 }
 .landing-card-body {
-  font-size: 14px;
+  font-size: clamp(14px, 1.15vw, 16px);
   line-height: 1.6;
   color: var(--muted);
   margin: 0;
@@ -2000,19 +2004,19 @@ table.grid-tbl {
 
 /* "Built in the open" note — the human, side-project context. */
 .landing-note {
-  padding-bottom: 80px;
-  max-width: 640px;
+  padding-bottom: clamp(72px, 9vw, 112px);
+  max-width: 720px;
   text-align: center;
 }
 .landing-note-title {
-  font-size: 22px;
+  font-size: clamp(22px, 2.8vw, 32px);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink);
-  margin: 0 0 14px;
+  margin: 0 0 16px;
 }
 .landing-note-body {
-  font-size: 15px;
+  font-size: clamp(15px, 1.3vw, 17px);
   line-height: 1.7;
   color: var(--ink-soft);
   margin: 0 0 12px;
@@ -2035,9 +2039,9 @@ table.grid-tbl {
   border-top: 1px solid var(--border);
 }
 .landing-footer-inner {
-  max-width: 920px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 24px clamp(20px, 5vw, 48px);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2061,13 +2065,7 @@ table.grid-tbl {
 }
 
 @media (max-width: 640px) {
-  .landing-inner {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-  .landing-title {
-    font-size: 34px;
-  }
+  /* Gutter + type already scale via clamp(); only the card grid needs to stack. */
   .landing-features {
     grid-template-columns: 1fr;
   }
